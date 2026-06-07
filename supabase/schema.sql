@@ -95,3 +95,9 @@ create policy "own meal_templates" on public.meal_templates
   for all to authenticated
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+-- ---------- テーブル権限（RLS とは別に role への GRANT が必要） ----------
+-- ログインユーザー(authenticated)のみ操作可。anon には付与しない（未ログインは一切アクセス不可）。
+grant select, insert, update, delete on public.meal_entries   to authenticated;
+grant select, insert, update, delete on public.food_templates to authenticated;
+grant select, insert, update, delete on public.meal_templates to authenticated;

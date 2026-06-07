@@ -167,7 +167,7 @@ export default function TodayPage() {
             <div className="card" key={mt}>
               <div className="section-title">
                 <h2>{MEAL_LABELS[mt]} <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>{fmt(sub.calories)} kcal</span></h2>
-                <button className="btn small outline" onClick={() => openAdd(mt)}>＋ 追加</button>
+                <button className="btn small outline" data-testid={`add-${mt}`} onClick={() => openAdd(mt)}>＋ 追加</button>
               </div>
               {list.length === 0 ? (
                 <div className="muted" style={{ fontSize: 13 }}>記録なし</div>

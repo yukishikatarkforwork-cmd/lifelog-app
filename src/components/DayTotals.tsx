@@ -11,7 +11,7 @@ export default function DayTotals({ total }: { total: Nutrition }) {
       <div className="totals">
         <div className="cell kcal">
           <div className="label">カロリー</div>
-          <div className="value">{fmt(total.calories)}</div>
+          <div className="value" data-testid="total-calories">{fmt(total.calories)}</div>
           <div className="unit">kcal</div>
         </div>
         <div className="cell p">

@@ -32,7 +32,7 @@ export default function SettingsPage() {
         <h2>アカウント</h2>
         <div className="muted" style={{ fontSize: 13 }}>ログイン中のメールアドレス</div>
         <div style={{ fontWeight: 600, marginBottom: 12 }}>{user?.email}</div>
-        <button className="btn outline full" onClick={() => void signOut()}>ログアウト</button>
+        <button data-testid="logout" className="btn outline full" onClick={() => void signOut()}>ログアウト</button>
       </div>
 
       <div className="card">

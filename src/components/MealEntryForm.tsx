@@ -90,7 +90,7 @@ export default function MealEntryForm({
 
         <div className="field">
           <label>食品・料理名 *</label>
-          <input value={form.food_name} onChange={(e) => set({ food_name: e.target.value })} placeholder="例: 鶏むね肉のソテー" autoFocus />
+          <input data-testid="meal-food-name" value={form.food_name} onChange={(e) => set({ food_name: e.target.value })} placeholder="例: 鶏むね肉のソテー" autoFocus />
         </div>
 
         <div className="field">
@@ -101,7 +101,7 @@ export default function MealEntryForm({
         <div className="grid-2">
           <div className="field">
             <label>カロリー (kcal)</label>
-            <input type="number" inputMode="decimal" value={form.calories} onChange={(e) => set({ calories: e.target.value })} />
+            <input data-testid="meal-calories" type="number" inputMode="decimal" value={form.calories} onChange={(e) => set({ calories: e.target.value })} />
           </div>
           <div className="field">
             <label>たんぱく質 (g)</label>
@@ -129,7 +129,7 @@ export default function MealEntryForm({
 
         <div className="grid-2">
           <button className="btn outline" onClick={onClose}>キャンセル</button>
-          <button className="btn" onClick={submit} disabled={saving || !form.food_name.trim()}>
+          <button data-testid="meal-save" className="btn" onClick={submit} disabled={saving || !form.food_name.trim()}>
             {saving ? '保存中…' : '保存'}
           </button>
         </div>

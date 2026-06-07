@@ -46,8 +46,8 @@ export default function LoginPage() {
 
       <div className="card">
         <div className="tabs">
-          <button className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); setError(''); setInfo(''); }}>ログイン</button>
-          <button className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); setError(''); setInfo(''); }}>新規登録</button>
+          <button data-testid="tab-login" className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); setError(''); setInfo(''); }}>ログイン</button>
+          <button data-testid="tab-signup" className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); setError(''); setInfo(''); }}>新規登録</button>
         </div>
 
         {error && <div className="error-box">{error}</div>}
@@ -56,13 +56,13 @@ export default function LoginPage() {
         <form onSubmit={submit}>
           <div className="field">
             <label>メールアドレス</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+            <input data-testid="auth-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
           </div>
           <div className="field">
             <label>パスワード</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} />
+            <input data-testid="auth-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} />
           </div>
-          <button type="submit" className="btn full" disabled={loading}>
+          <button data-testid="auth-submit" type="submit" className="btn full" disabled={loading}>
             {loading ? '処理中…' : mode === 'login' ? 'ログイン' : '登録する'}
           </button>
         </form>

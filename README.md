@@ -79,6 +79,42 @@ npm run preview    # ビルド結果のプレビュー
 
 ---
 
+## テスト
+
+2層構成で「ちゃんと動くか」を機械的に確認できる。
+
+### 単体テスト（Vitest）
+
+栄養計算（合計・PFC換算・数値パース）と日付処理（月またぎ・曜日表示）を検証。高速・ネット不要。
+
+```bash
+npm test           # 1回実行
+npm run test:watch # 監視モード
+```
+
+対象: [`src/lib/nutrition.test.ts`](src/lib/nutrition.test.ts) / [`src/lib/date.test.ts`](src/lib/date.test.ts)
+
+### E2E テスト（Playwright）
+
+実ブラウザで dev サーバー（実 Supabase 接続）を自動操作し、
+**新規登録 → 食事記録 → 1日合計反映 → ログアウト → 再ログイン → データ残存** までを検証する。
+ログイン／ログアウト要件とクラウド保存を自動で実証する。
+
+```bash
+# 初回のみブラウザを取得
+npx playwright install chromium
+
+npm run test:e2e            # ヘッドレス実行（dev サーバーは自動起動）
+npx playwright test --ui    # UI モードで対話的に実行
+```
+
+対象: [`e2e/app.spec.ts`](e2e/app.spec.ts)
+
+> 前提: `.env`（Supabase 接続情報）と、Supabase 側で **Confirm email = OFF**。
+> 注意: 実行ごとに `lifelog-e2e-<時刻>@example.com` のテストユーザーが Supabase Auth に作成される（蓄積したら Supabase ダッシュボードの Authentication > Users から削除可）。
+
+---
+
 ## データモデル
 
 すべて `user_id` に紐づき RLS で分離。将来の体調/天気気圧/家計簿テーブル追加に備え **日付単位** で設計。

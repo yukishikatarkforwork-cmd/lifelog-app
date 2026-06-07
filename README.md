@@ -1,0 +1,111 @@
+# Lifelog 🥗 — 自己管理統合アプリ（食事管理 MVP / Phase 1）
+
+体調・食事・栄養・家計簿・天気・気圧を日付単位で横断管理する自己管理アプリを目指す。
+**Phase 1（本リポジトリの現状）では食事管理に絞って実装**している。
+食事内容・カロリー・PFC（たんぱく質/脂質/炭水化物）をスマホで素早く記録し、
+よく食べるものをテンプレート化して入力負担を減らす。
+
+## 主な機能（Phase 1）
+
+- **ユーザー登録・ログイン**（Supabase Auth / メールアドレス）
+- **クラウド保存・データ分離**（PostgreSQL + Row Level Security。本人のみ閲覧・編集可）
+- **食事記録**：朝食・昼食・夕食・間食、食品名・量・カロリー・P/F/C・メモ・タグ
+- **日別一覧と 1 日合計**（カロリー・PFC、PFC バランスバー）
+- **食品テンプレート**：よく食べる単品を登録 → 記録時に呼び出し
+- **食事セットテンプレート**：複数食品をまとめて登録。「自動セット」で当日に一括反映
+- **栄養グラフ**：カロリー推移 / PFC 推移 / PFC バランス（7・14・30 日）
+- **履歴**：日付ごとの記録一覧 → タップで当日へ
+- **設定**：アカウント情報・ログアウト・全データ削除
+
+## 技術スタック
+
+| 区分 | 採用 |
+|---|---|
+| フロント | React 19 + TypeScript + Vite |
+| ルーティング | react-router-dom |
+| グラフ | recharts |
+| バックエンド | Supabase（Auth / PostgreSQL / RLS） |
+
+---
+
+## セットアップ
+
+### 1. 依存インストール
+
+```bash
+npm install
+```
+
+> ⚠️ **Google Drive 上（`G:\マイドライブ` 等）には置かないでください。** node_modules の展開時に
+> Drive 仮想ファイルシステムが書き込みエラーを多発させます。ローカルディスク（例: `C:\Users\<you>\projects`）で開発し、
+> GitHub をソース・オブ・トゥルースとして運用してください。
+
+### 2. Supabase プロジェクト作成
+
+1. <https://supabase.com> でプロジェクトを作成
+2. **SQL Editor** で [`supabase/schema.sql`](supabase/schema.sql) を貼り付けて実行（テーブル・RLS・トリガを作成）
+3. **Project Settings > API** から `Project URL` と `anon public` キーを取得
+
+### 3. 環境変数
+
+`.env.example` をコピーして `.env` を作成し、値を設定：
+
+```bash
+cp .env.example .env
+```
+
+```
+VITE_SUPABASE_URL=https://xxxx.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGci...
+```
+
+> メール確認を省略してすぐ試したい場合は、Supabase の
+> **Authentication > Sign In / Providers > Email** で「Confirm email」をオフにする。
+
+### 4. 開発サーバー起動
+
+```bash
+npm run dev
+```
+
+ブラウザで表示された URL（既定 `http://localhost:5173`）を開く。
+
+### 5. ビルド
+
+```bash
+npm run build      # 型チェック + 本番ビルド（dist/）
+npm run preview    # ビルド結果のプレビュー
+```
+
+---
+
+## データモデル
+
+すべて `user_id` に紐づき RLS で分離。将来の体調/天気気圧/家計簿テーブル追加に備え **日付単位** で設計。
+
+- `meal_entries` — 食事記録（1 行 = 1 食品）
+- `food_templates` — 食品テンプレート（単品）
+- `meal_templates` — 食事セットテンプレート（複数食品 + 自動セットフラグ）
+
+詳細は [`supabase/schema.sql`](supabase/schema.sql) を参照。
+
+---
+
+## ロードマップ
+
+| フェーズ | 内容 | 状態 |
+|---|---|---|
+| **Phase 1** | 食事管理 MVP（記録・栄養素・テンプレート・グラフ） | ✅ 本リポジトリ |
+| Phase 2 | 栄養目標設定・検索・タグ強化・CSV/Markdown 出力・食品DB連携 | 予定 |
+| Phase 3 | 体調管理（体調スコア・睡眠・気分・頭痛・服薬・メモ） | 予定 |
+| Phase 4 | 天気・気圧（手入力 → API連携、体調×気圧グラフ） | 予定 |
+| Phase 5 | 家計簿（支出・カテゴリ・支払方法、カテゴリ別グラフ） | 予定 |
+| Phase 6 | 統合ダッシュボード・CSV/Markdown 出力・AI 分析 | 予定 |
+
+---
+
+## デプロイ（任意）
+
+静的 SPA なので Vercel / Netlify / Cloudflare Pages 等にそのまま載せられる。
+ビルドコマンド `npm run build`、出力ディレクトリ `dist`、環境変数 `VITE_SUPABASE_URL` /
+`VITE_SUPABASE_ANON_KEY` を設定する。SPA のためルーティングの fallback（全て `index.html`）を有効にする。

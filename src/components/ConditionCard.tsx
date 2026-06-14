@@ -16,7 +16,7 @@ function ScoreSelector({ value, onChange }: { value: number | null; onChange: (v
           style={{
             flex: 1, padding: '8px 0', borderRadius: 8, fontWeight: 700,
             border: '1px solid var(--border)',
-            background: value === n ? 'var(--primary)' : '#fff',
+            background: value === n ? 'var(--primary)' : 'var(--input-bg)',
             color: value === n ? '#fff' : 'var(--text)',
           }}
         >

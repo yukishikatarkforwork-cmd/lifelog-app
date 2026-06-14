@@ -15,7 +15,7 @@ function GoalRow({
           <span style={{ color: over ? 'var(--danger)' : 'var(--muted)' }}>({Math.round(pct)}%)</span>
         </span>
       </div>
-      <div style={{ height: 6, borderRadius: 999, background: '#eef2f7', overflow: 'hidden' }}>
+      <div style={{ height: 6, borderRadius: 999, background: 'var(--fill-2)', overflow: 'hidden' }}>
         <div style={{ width: `${Math.min(100, pct)}%`, height: '100%', background: over ? 'var(--danger)' : color }} />
       </div>
     </div>

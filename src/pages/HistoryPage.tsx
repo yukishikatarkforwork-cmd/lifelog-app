@@ -73,7 +73,7 @@ export default function HistoryPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="🔍 食品名・メモで検索"
-          style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10 }}
+          style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--input-bg)', color: 'var(--text)' }}
         />
         {allTags.length > 0 && (
           <div className="tag-input" style={{ marginTop: 10 }}>
@@ -85,7 +85,7 @@ export default function HistoryPage() {
                 onClick={() => toggleTag(t)}
                 style={{
                   cursor: 'pointer', border: '1px solid var(--border)',
-                  background: selectedTags.includes(t) ? 'var(--primary)' : '#eef2f7',
+                  background: selectedTags.includes(t) ? 'var(--primary)' : 'var(--fill-2)',
                   color: selectedTags.includes(t) ? '#fff' : 'var(--muted)',
                 }}
               >

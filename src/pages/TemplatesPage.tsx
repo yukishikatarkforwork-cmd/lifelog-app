@@ -72,7 +72,7 @@ export default function TemplatesPage() {
                 <div className="row-between">
                   <div>
                     <div className="name" style={{ fontWeight: 600 }}>
-                      {m.name} {m.auto_apply && <span className="tag" style={{ background: '#e8f5ee', color: 'var(--primary-strong)' }}>自動セット</span>}
+                      {m.name} {m.auto_apply && <span className="tag" style={{ background: 'var(--accent-soft)', color: 'var(--primary-strong)' }}>自動セット</span>}
                     </div>
                     <div className="muted" style={{ fontSize: 12 }}>
                       {m.meal_type ? `${MEAL_LABELS[m.meal_type]}・` : ''}{m.items.length} 品
@@ -235,7 +235,7 @@ function MealForm({ userId, value, onClose, onSaved }: {
 
         <label className="muted" style={{ fontSize: 13 }}>含める食品</label>
         {items.map((it, i) => (
-          <div className="card" key={i} style={{ padding: 10, background: '#f8fafc', boxShadow: 'none' }}>
+          <div className="card" key={i} style={{ padding: 10, background: 'var(--fill)', boxShadow: 'none' }}>
             <div className="row-between" style={{ marginBottom: 6 }}>
               <strong style={{ fontSize: 13 }}>食品 {i + 1}</strong>
               {items.length > 1 && <button className="btn ghost small" onClick={() => removeItem(i)}>削除</button>}

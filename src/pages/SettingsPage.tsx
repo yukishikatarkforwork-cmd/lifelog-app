@@ -143,7 +143,7 @@ export default function SettingsPage() {
             <span key={c} className="chip" style={{ opacity: 0.7 }}>{c}</span>
           ))}
           {customCats.map((c) => (
-            <span key={c.id} className="chip" style={{ background: '#e8f5ee', color: 'var(--primary-strong)' }}>
+            <span key={c.id} className="chip" style={{ background: 'var(--accent-soft)', color: 'var(--primary-strong)' }}>
               {c.name}
               <button type="button" onClick={() => delCat(c.id)} aria-label="削除">×</button>
             </span>
@@ -155,7 +155,7 @@ export default function SettingsPage() {
             onChange={(e) => setNewCat(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void addCat(); } }}
             placeholder="新しいカテゴリ名"
-            style={{ flex: 1, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10 }}
+            style={{ flex: 1, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--input-bg)', color: 'var(--text)' }}
           />
           <button className="btn" onClick={addCat} disabled={!newCat.trim()}>追加</button>
         </div>
@@ -182,7 +182,7 @@ export default function SettingsPage() {
         <button className="btn danger outline full" onClick={deleteAllData}>すべてのデータを削除</button>
       </div>
 
-      <p className="center muted" style={{ fontSize: 11 }}>Lifelog 食事管理（Phase 1 + 2）</p>
+      <p className="center muted" style={{ fontSize: 11 }}>Lifelog — 自己管理統合アプリ</p>
     </div>
   );
 }

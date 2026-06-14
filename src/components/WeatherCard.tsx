@@ -63,7 +63,7 @@ export default function WeatherCard({ date }: { date: string }) {
               style={{
                 flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 18,
                 border: '1px solid var(--border)',
-                background: weather === w.key ? 'var(--primary)' : '#fff',
+                background: weather === w.key ? 'var(--primary)' : 'var(--input-bg)',
               }}
             >
               {w.icon}

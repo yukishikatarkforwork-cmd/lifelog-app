@@ -11,12 +11,42 @@
   --protein: #ef4444;
   --fat: #8b5cf6;
   --carb: #3b82f6;
+  /* セマンティックな面・塗りの色（ダークモードでまとめて差し替えられるよう変数化） */
+  --input-bg: #ffffff;
+  --fill: #f8fafc;
+  --fill-2: #eef2f7;
+  --accent-soft: #e8f5ee;
+  --danger-soft: #fdecea;
+  --toast-bg: rgba(31, 41, 51, 0.92);
   --radius: 12px;
   --shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --shadow-hover: 0 3px 10px rgba(15, 23, 42, 0.14);
   --nav-h: 60px;
 
+  color-scheme: light dark;
   font-family: system-ui, -apple-system, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', sans-serif;
   color: var(--text);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1621;
+    --card: #18222f;
+    --text: #e6edf4;
+    --muted: #94a3b5;
+    --border: #2a3848;
+    --primary: #3aa37d;
+    --primary-strong: #5cc49d;
+    --danger: #ec7e7a;
+    --input-bg: #202c3a;
+    --fill: #202c3a;
+    --fill-2: #28384a;
+    --accent-soft: #1d3a2d;
+    --danger-soft: #3a2321;
+    --toast-bg: #2f4258;
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+    --shadow-hover: 0 3px 10px rgba(0, 0, 0, 0.55);
+  }
 }
 
 * { box-sizing: border-box; }
@@ -30,7 +60,18 @@ body {
 }
 
 button { font-family: inherit; cursor: pointer; }
-input, select, textarea { font-family: inherit; font-size: 16px; }
+input, select, textarea {
+  font-family: inherit;
+  font-size: 16px;
+  background: var(--input-bg);
+  color: var(--text);
+}
+
+/* キーボード操作時に分かりやすいフォーカスリングを全インタラクティブ要素へ（specificity を低く保つ） */
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
 
 /* ---------- レイアウト ---------- */
 .app-shell {
@@ -55,7 +96,7 @@ input, select, textarea { font-family: inherit; font-size: 16px; }
   justify-content: space-between;
   box-shadow: var(--shadow);
 }
-.app-header h1 { font-size: 18px; margin: 0; font-weight: 700; }
+.app-header h1 { font-size: 18px; margin: 0; font-weight: 700; letter-spacing: 0.01em; }
 
 /* ---------- ボトムナビ ---------- */
 .bottom-nav {
@@ -80,9 +121,12 @@ input, select, textarea { font-family: inherit; font-size: 16px; }
   text-decoration: none;
   color: var(--muted);
   font-size: 11px;
+  transition: color 0.15s ease, background 0.15s ease;
 }
-.bottom-nav a .icon { font-size: 20px; line-height: 1; }
+.bottom-nav a .icon { font-size: 20px; line-height: 1; transition: transform 0.12s ease; }
 .bottom-nav a.active { color: var(--primary-strong); font-weight: 700; }
+.bottom-nav a.active .icon { transform: translateY(-1px) scale(1.08); }
+.bottom-nav a:active { background: var(--fill); }
 
 /* ---------- カード ---------- */
 .card {
@@ -93,6 +137,10 @@ input, select, textarea { font-family: inherit; font-size: 16px; }
   margin-bottom: 14px;
 }
 .card h2 { font-size: 15px; margin: 0 0 10px; }
+/* タップできるカード（履歴の各行など）には押下・ホバーのフィードバックを付ける */
+a.card { transition: transform 0.06s ease, box-shadow 0.15s ease; }
+a.card:active { transform: translateY(1px); }
+@media (hover: hover) { a.card:hover { box-shadow: var(--shadow-hover); } }
 
 .section-title {
   display: flex;
@@ -111,8 +159,14 @@ input, select, textarea { font-family: inherit; font-size: 16px; }
   font-weight: 600;
   background: var(--primary);
   color: #fff;
+  transition: filter 0.15s ease, transform 0.06s ease, background 0.15s ease;
 }
-.btn:disabled { opacity: 0.5; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:not(:disabled):active { transform: translateY(1px); }
+@media (hover: hover) {
+  .btn:not(:disabled):hover { filter: brightness(1.06); }
+  .btn.outline:not(:disabled):hover, .btn.ghost:not(:disabled):hover { background: var(--fill-2); filter: none; }
+}
 .btn.full { width: 100%; }
 .btn.outline { background: transparent; color: var(--primary-strong); border: 1px solid var(--primary); }
 .btn.ghost { background: transparent; color: var(--muted); padding: 6px 8px; }
@@ -128,7 +182,7 @@ input, select, textarea { font-family: inherit; font-size: 16px; }
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--input-bg);
   color: var(--text);
 }
 .field textarea { resize: vertical; min-height: 60px; }
@@ -141,7 +195,7 @@ input, select, textarea { font-family: inherit; font-size: 16px; }
   padding: 10px 8px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--input-bg);
   color: var(--text);
 }
 
@@ -156,14 +210,19 @@ input, select, textarea { font-family: inherit; font-size: 16px; }
 }
 .entry:last-child { border-bottom: none; }
 .entry .main { flex: 1; min-width: 0; }
+/* クリックで編集する行を button にしてキーボード/スクリーンリーダー対応にしつつ、見た目は素の行に保つ */
+.entry-main { display: block; text-align: left; background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; }
+.entry-main:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 6px; }
 .entry .name { font-weight: 600; font-size: 14px; }
 .entry .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .entry .kcal { font-weight: 700; white-space: nowrap; color: var(--kcal); }
+/* ゴミ箱などアイコンボタンは最小タップ領域を確保 */
+.btn.ghost.small { min-width: 36px; min-height: 32px; }
 
 .tag {
   display: inline-block;
   font-size: 11px;
-  background: #eef2f7;
+  background: var(--fill-2);
   color: var(--muted);
   border-radius: 999px;
   padding: 2px 8px;
@@ -173,7 +232,7 @@ input, select, textarea { font-family: inherit; font-size: 16px; }
 
 /* ---------- 合計サマリ ---------- */
 .totals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; }
-.totals .cell { background: #f8fafc; border-radius: 10px; padding: 8px 4px; }
+.totals .cell { background: var(--fill); border-radius: 10px; padding: 8px 4px; }
 .totals .cell .label { font-size: 11px; color: var(--muted); }
 .totals .cell .value { font-size: 18px; font-weight: 700; }
 .totals .cell .unit { font-size: 11px; color: var(--muted); }
@@ -183,7 +242,7 @@ input, select, textarea { font-family: inherit; font-size: 16px; }
 .totals .cell.c .value { color: var(--carb); }
 
 /* PFC バー */
-.pfc-bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; margin-top: 10px; background: #eef2f7; }
+.pfc-bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; margin-top: 10px; background: var(--fill-2); }
 .pfc-bar .seg.p { background: var(--protein); }
 .pfc-bar .seg.f { background: var(--fat); }
 .pfc-bar .seg.c { background: var(--carb); }
@@ -193,7 +252,15 @@ input, select, textarea { font-family: inherit; font-size: 16px; }
 /* ---------- 日付ナビ ---------- */
 .date-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
 .date-nav .label { font-size: 16px; font-weight: 700; text-align: center; flex: 1; }
-.date-nav button { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 16px; }
+.date-nav button {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 8px 14px; font-size: 18px; line-height: 1; color: var(--text);
+  transition: background 0.15s ease;
+}
+.date-nav button:active { background: var(--fill-2); }
+/* 日付ラベルをタップするとネイティブの日付ピッカーが開く（入力欄を透明に重ねる） */
+.date-jump { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.date-jump input[type="date"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: none; padding: 0; cursor: pointer; }
 
 /* ---------- 認証画面 ---------- */
 .auth-wrap { max-width: 380px; margin: 0 auto; padding: 40px 20px; }
@@ -206,8 +273,8 @@ input, select, textarea { font-family: inherit; font-size: 16px; }
 .muted { color: var(--muted); }
 .center { text-align: center; }
 .empty { text-align: center; color: var(--muted); padding: 24px 8px; font-size: 14px; }
-.error-box { background: #fdecea; color: var(--danger); border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
-.info-box { background: #e8f5ee; color: var(--primary-strong); border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
+.error-box { background: var(--danger-soft); color: var(--danger); border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
+.info-box { background: var(--accent-soft); color: var(--primary-strong); border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
 .row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .stack-sm > * + * { margin-top: 8px; }
 .spinner-wrap { display: flex; align-items: center; justify-content: center; min-height: 60vh; color: var(--muted); }
@@ -215,22 +282,52 @@ input, select, textarea { font-family: inherit; font-size: 16px; }
 .tag-input { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .chip {
   display: inline-flex; align-items: center; gap: 4px;
-  background: #eef2f7; border-radius: 999px; padding: 4px 10px; font-size: 12px;
+  background: var(--fill-2); color: var(--text); border-radius: 999px; padding: 4px 10px; font-size: 12px;
 }
 .chip button { background: none; border: none; color: var(--muted); font-size: 14px; line-height: 1; }
 .modal-backdrop {
   position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45);
   display: flex; align-items: flex-end; justify-content: center; z-index: 50;
+  animation: backdrop-in 0.18s ease;
 }
 .modal {
   background: var(--card); width: 100%; max-width: 560px;
   border-radius: 16px 16px 0 0; padding: 18px 16px calc(20px + env(safe-area-inset-bottom, 0px));
   max-height: 90vh; overflow-y: auto;
+  animation: sheet-in 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .modal h2 { margin: 0 0 14px; font-size: 17px; }
+@keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sheet-in { from { transform: translateY(100%); } to { transform: none; } }
 .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
 .tabs button {
   flex: 1; padding: 8px; border-radius: 10px; border: 1px solid var(--border);
   background: var(--card); color: var(--muted); font-weight: 600; font-size: 14px;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .tabs button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* ---------- トースト ---------- */
+.toast-viewport {
+  position: fixed; left: 0; right: 0;
+  bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 0 16px; z-index: 100; pointer-events: none;
+}
+.toast {
+  background: var(--toast-bg); color: #fff;
+  padding: 10px 16px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; max-width: 100%;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.25);
+  animation: toast-in 0.2s ease;
+}
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* モーション過敏設定を尊重し、アニメーション/トランジションを抑制する */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -5,6 +5,7 @@ const NAV = [
   { to: '/history', label: '履歴', icon: '📅', end: false, id: 'history' },
   { to: '/graph', label: '分析', icon: '📊', end: false, id: 'graph' },
   { to: '/templates', label: 'テンプレ', icon: '⭐', end: false, id: 'templates' },
+  { to: '/export', label: '出力', icon: '📤', end: false, id: 'export' },
   { to: '/settings', label: '設定', icon: '⚙️', end: false, id: 'settings' },
 ];
 
@@ -12,7 +13,7 @@ export default function Layout() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <h1>🥗 Lifelog 食事記録</h1>
+        <h1>🥗 Lifelog</h1>
       </header>
       <main>
         <Outlet />

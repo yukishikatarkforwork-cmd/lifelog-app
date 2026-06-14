@@ -1,4 +1,3 @@
-/// <reference types="vitest/config" />
 import { defineConfig } from 'vitest/config';
 
 // 単体テスト（Vitest）は src 配下のみ対象。

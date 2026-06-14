@@ -41,7 +41,7 @@ export default function LoginPage() {
       <div className="logo">
         <div className="mark">🥗</div>
         <h1>Lifelog</h1>
-        <p>食事・栄養をまとめて記録</p>
+        <p>体調・食事・家計簿をまとめて記録</p>
       </div>
 
       <div className="card">

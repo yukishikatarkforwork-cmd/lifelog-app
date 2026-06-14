@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import type { DailyRecord } from '../lib/types';
 import { parseNum } from '../lib/nutrition';
+import { useReload } from '../lib/useReload';
 
 function ScoreSelector({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
   return (
@@ -15,7 +16,7 @@ function ScoreSelector({ value, onChange }: { value: number | null; onChange: (v
           style={{
             flex: 1, padding: '8px 0', borderRadius: 8, fontWeight: 700,
             border: '1px solid var(--border)',
-            background: value === n ? 'var(--primary)' : '#fff',
+            background: value === n ? 'var(--primary)' : 'var(--input-bg)',
             color: value === n ? '#fff' : 'var(--text)',
           }}
         >
@@ -38,7 +39,7 @@ export default function ConditionCard({ date }: { date: string }) {
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState('');
 
-  const load = useCallback(async () => {
+  useReload(async () => {
     const { data } = await supabase.from('daily_records').select('*').eq('date', date).maybeSingle();
     const r = data as DailyRecord | null;
     setCondition(r?.condition_score ?? null);
@@ -49,8 +50,6 @@ export default function ConditionCard({ date }: { date: string }) {
     setMemo(r?.memo ?? '');
     setSaved(false);
   }, [date]);
-
-  useEffect(() => { void load(); }, [load]);
 
   const save = async () => {
     if (!user) return;

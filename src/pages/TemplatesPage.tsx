@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import type { FoodTemplate, MealTemplate, MealTemplateItem, MealType } from '../lib/types';
 import { MEAL_LABELS, MEAL_TYPES } from '../lib/types';
 import { fmt, parseNum } from '../lib/nutrition';
+import { useReload } from '../lib/useReload';
 
 type Tab = 'food' | 'meal';
 
@@ -17,7 +18,7 @@ export default function TemplatesPage() {
   const [foodForm, setFoodForm] = useState<FoodTemplate | null>(null);
   const [mealForm, setMealForm] = useState<MealTemplate | null>(null);
 
-  const load = useCallback(async () => {
+  const reload = useReload(async () => {
     const [f, m] = await Promise.all([
       supabase.from('food_templates').select('*').order('name'),
       supabase.from('meal_templates').select('*').order('name'),
@@ -26,8 +27,6 @@ export default function TemplatesPage() {
     setFoods((f.data as FoodTemplate[]) ?? []);
     setMeals((m.data as MealTemplate[]) ?? []);
   }, []);
-
-  useEffect(() => { void load(); }, [load]);
 
   return (
     <div className="page">
@@ -73,7 +72,7 @@ export default function TemplatesPage() {
                 <div className="row-between">
                   <div>
                     <div className="name" style={{ fontWeight: 600 }}>
-                      {m.name} {m.auto_apply && <span className="tag" style={{ background: '#e8f5ee', color: 'var(--primary-strong)' }}>自動セット</span>}
+                      {m.name} {m.auto_apply && <span className="tag" style={{ background: 'var(--accent-soft)', color: 'var(--primary-strong)' }}>自動セット</span>}
                     </div>
                     <div className="muted" style={{ fontSize: 12 }}>
                       {m.meal_type ? `${MEAL_LABELS[m.meal_type]}・` : ''}{m.items.length} 品
@@ -92,7 +91,7 @@ export default function TemplatesPage() {
           userId={user.id}
           value={foodForm}
           onClose={() => setFoodForm(null)}
-          onSaved={async () => { setFoodForm(null); await load(); }}
+          onSaved={async () => { setFoodForm(null); await reload(); }}
         />
       )}
       {mealForm && user && (
@@ -100,7 +99,7 @@ export default function TemplatesPage() {
           userId={user.id}
           value={mealForm}
           onClose={() => setMealForm(null)}
-          onSaved={async () => { setMealForm(null); await load(); }}
+          onSaved={async () => { setMealForm(null); await reload(); }}
         />
       )}
     </div>
@@ -236,7 +235,7 @@ function MealForm({ userId, value, onClose, onSaved }: {
 
         <label className="muted" style={{ fontSize: 13 }}>含める食品</label>
         {items.map((it, i) => (
-          <div className="card" key={i} style={{ padding: 10, background: '#f8fafc', boxShadow: 'none' }}>
+          <div className="card" key={i} style={{ padding: 10, background: 'var(--fill)', boxShadow: 'none' }}>
             <div className="row-between" style={{ marginBottom: 6 }}>
               <strong style={{ fontSize: 13 }}>食品 {i + 1}</strong>
               {items.length > 1 && <button className="btn ghost small" onClick={() => removeItem(i)}>削除</button>}

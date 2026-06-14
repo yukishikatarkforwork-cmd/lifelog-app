@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { toCSV, toMarkdown } from './export';
-import type { MealEntry, MealType } from './types';
+import { toCSV, toMarkdown, toExpensesCSV, toDailyMarkdown } from './export';
+import type { DailyRecord, Expense, MealEntry, MealType, WeatherRecord } from './types';
 
 function entry(p: Partial<MealEntry>): MealEntry {
   return {
@@ -66,5 +66,57 @@ describe('toMarkdown', () => {
       entry({ date: '2026-06-07', food_name: 'A' }),
     ]);
     expect(md.indexOf('2026-06-07')).toBeLessThan(md.indexOf('2026-06-09'));
+  });
+});
+
+function expense(p: Partial<Expense>): Expense {
+  return {
+    id: p.id ?? 'e', user_id: 'u', date: p.date ?? '2026-06-08',
+    amount: p.amount ?? 0, category: p.category ?? '食費',
+    payment_method: p.payment_method ?? null, memo: p.memo ?? null,
+    created_at: '', updated_at: '',
+  };
+}
+
+describe('toExpensesCSV', () => {
+  it('ヘッダーと行を出力する', () => {
+    const csv = toExpensesCSV([expense({ amount: 1200, category: '食費', payment_method: '現金' })]);
+    const [head, row] = csv.split('\r\n');
+    expect(head).toBe('date,amount,category,payment_method,memo');
+    expect(row).toBe('2026-06-08,1200,食費,現金,');
+  });
+});
+
+describe('toDailyMarkdown', () => {
+  const condition: DailyRecord = {
+    user_id: 'u', date: '2026-06-08', condition_score: 4, mood_score: 3,
+    sleep_hours: 7, headache: true, medication: false, memo: '低気圧ぎみ',
+  };
+  const weather: WeatherRecord = {
+    user_id: 'u', date: '2026-06-08', weather: 'rainy',
+    pressure_hpa: 1004, temperature: 21, humidity: 70, memo: null,
+  };
+
+  it('日別に体調・天気・食事・家計簿をまとめる', () => {
+    const md = toDailyMarkdown({
+      meals: [{
+        id: 'm', user_id: 'u', date: '2026-06-08', meal_type: 'breakfast' as MealType,
+        food_name: '納豆', amount: null, calories: 95, protein: 7, fat: 5, carbohydrate: 12,
+        memo: null, tags: [], created_at: '', updated_at: '',
+      }],
+      conditions: [condition],
+      weathers: [weather],
+      expenses: [expense({ amount: 1200, category: '食費', payment_method: '現金' })],
+    });
+    expect(md).toContain('## 6/8(月) (2026-06-08)');
+    expect(md).toContain('**体調**: 体調 4/5 / 気分 3/5 / 睡眠 7h / 頭痛あり');
+    expect(md).toContain('**天気・気圧**: 雨 / 1004hPa / 21℃ / 湿度70%');
+    expect(md).toContain('**食事**: 合計 95 kcal');
+    expect(md).toContain('**家計簿**: 合計 ¥1,200');
+    expect(md).toContain('- 食費 ¥1,200（現金）');
+  });
+
+  it('記録なしは（記録なし）', () => {
+    expect(toDailyMarkdown({ meals: [], conditions: [], weathers: [], expenses: [] })).toContain('（記録なし）');
   });
 });

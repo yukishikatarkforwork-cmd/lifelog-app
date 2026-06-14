@@ -128,3 +128,101 @@ create policy "own user_settings" on public.user_settings
   with check (auth.uid() = user_id);
 
 grant select, insert, update, delete on public.user_settings to authenticated;
+
+-- =====================================================================
+-- Phase 3: 体調の日次記録（user × date で1行。upsert）
+-- =====================================================================
+create table if not exists public.daily_records (
+  user_id         uuid not null references auth.users (id) on delete cascade,
+  date            date not null,
+  condition_score smallint,  -- 体調 1..5
+  mood_score      smallint,  -- 気分 1..5
+  sleep_hours     numeric,
+  headache        boolean not null default false,
+  medication      boolean not null default false,
+  memo            text,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now(),
+  primary key (user_id, date)
+);
+
+-- =====================================================================
+-- Phase 4: 天気・気圧の日次記録（user × date で1行。upsert）
+-- =====================================================================
+create table if not exists public.weather_records (
+  user_id      uuid not null references auth.users (id) on delete cascade,
+  date         date not null,
+  weather      text,          -- sunny / cloudy / rainy / snowy / other
+  pressure_hpa numeric,
+  temperature  numeric,
+  humidity     numeric,
+  memo         text,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  primary key (user_id, date)
+);
+
+-- =====================================================================
+-- Phase 5: 家計簿（1日に複数）と支出カテゴリ（ユーザー追加分）
+-- =====================================================================
+create table if not exists public.expenses (
+  id             uuid primary key default gen_random_uuid(),
+  user_id        uuid not null references auth.users (id) on delete cascade,
+  date           date not null,
+  amount         numeric not null,
+  category       text not null,
+  payment_method text,
+  memo           text,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+create index if not exists expenses_user_date_idx on public.expenses (user_id, date);
+
+create table if not exists public.expense_categories (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  name       text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists expense_categories_user_idx on public.expense_categories (user_id);
+
+-- ---------- updated_at トリガ ----------
+drop trigger if exists trg_daily_records_updated on public.daily_records;
+create trigger trg_daily_records_updated before update on public.daily_records
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_weather_records_updated on public.weather_records;
+create trigger trg_weather_records_updated before update on public.weather_records
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_expenses_updated on public.expenses;
+create trigger trg_expenses_updated before update on public.expenses
+  for each row execute function public.set_updated_at();
+
+-- ---------- RLS ----------
+alter table public.daily_records      enable row level security;
+alter table public.weather_records    enable row level security;
+alter table public.expenses           enable row level security;
+alter table public.expense_categories enable row level security;
+
+drop policy if exists "own daily_records" on public.daily_records;
+create policy "own daily_records" on public.daily_records
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "own weather_records" on public.weather_records;
+create policy "own weather_records" on public.weather_records
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "own expenses" on public.expenses;
+create policy "own expenses" on public.expenses
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "own expense_categories" on public.expense_categories;
+create policy "own expense_categories" on public.expense_categories
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ---------- GRANT ----------
+grant select, insert, update, delete on public.daily_records      to authenticated;
+grant select, insert, update, delete on public.weather_records    to authenticated;
+grant select, insert, update, delete on public.expenses           to authenticated;
+grant select, insert, update, delete on public.expense_categories to authenticated;

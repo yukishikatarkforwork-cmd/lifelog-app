@@ -8,6 +8,9 @@ import { addDays, formatDisplay, todayStr } from '../lib/date';
 import { fmt, parseNum, sumNutrition } from '../lib/nutrition';
 import DayTotals from '../components/DayTotals';
 import MealEntryForm from '../components/MealEntryForm';
+import ConditionCard from '../components/ConditionCard';
+import WeatherCard from '../components/WeatherCard';
+import ExpensesCard from '../components/ExpensesCard';
 
 const entryToInput = (e: MealEntry): MealEntryInput => ({
   meal_type: e.meal_type,
@@ -151,6 +154,10 @@ export default function TodayPage() {
 
       {error && <div className="error-box">{error}</div>}
 
+      <ConditionCard date={date} />
+      <WeatherCard date={date} />
+
+      <div className="section-title" style={{ marginTop: 4 }}><h2>🍽️ 食事</h2></div>
       <DayTotals total={total} goals={goals} />
 
       {!loading && entries.length === 0 && autoItemCount > 0 && (
@@ -199,6 +206,8 @@ export default function TodayPage() {
           );
         })
       )}
+
+      <ExpensesCard date={date} />
 
       {formOpen && (
         <MealEntryForm

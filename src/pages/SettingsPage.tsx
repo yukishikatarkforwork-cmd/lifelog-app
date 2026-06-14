@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { parseNum } from '../lib/nutrition';
-import type { UserSettings } from '../lib/types';
+import type { ExpenseCategory, UserSettings } from '../lib/types';
+import { DEFAULT_EXPENSE_CATEGORIES } from '../lib/types';
 
 export default function SettingsPage() {
   const { user, signOut } = useAuth();
@@ -17,6 +18,15 @@ export default function SettingsPage() {
   const [carb, setCarb] = useState('');
   const [savingGoal, setSavingGoal] = useState(false);
 
+  // 支出カテゴリ（ユーザー追加分）
+  const [customCats, setCustomCats] = useState<ExpenseCategory[]>([]);
+  const [newCat, setNewCat] = useState('');
+
+  const loadCats = async () => {
+    const { data } = await supabase.from('expense_categories').select('*').order('created_at');
+    setCustomCats((data as ExpenseCategory[]) ?? []);
+  };
+
   useEffect(() => {
     (async () => {
       const { data } = await supabase.from('user_settings').select('*').maybeSingle();
@@ -27,8 +37,29 @@ export default function SettingsPage() {
         setFat(s.target_fat?.toString() ?? '');
         setCarb(s.target_carbohydrate?.toString() ?? '');
       }
+      await loadCats();
     })();
   }, []);
+
+  const addCat = async () => {
+    const name = newCat.trim();
+    if (!user || name === '') return;
+    if ([...DEFAULT_EXPENSE_CATEGORIES, ...customCats.map((c) => c.name)].includes(name)) {
+      setErr('同名のカテゴリが既にあります。');
+      return;
+    }
+    setErr('');
+    const { error } = await supabase.from('expense_categories').insert({ user_id: user.id, name });
+    if (error) { setErr(error.message); return; }
+    setNewCat('');
+    await loadCats();
+  };
+
+  const delCat = async (id: string) => {
+    const { error } = await supabase.from('expense_categories').delete().eq('id', id);
+    if (error) { setErr(error.message); return; }
+    await loadCats();
+  };
 
   const saveGoals = async () => {
     if (!user) return;
@@ -102,6 +133,32 @@ export default function SettingsPage() {
         <h2>データ出力</h2>
         <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>食事記録を CSV / Markdown で書き出します（AI 分析・表計算向け）。</p>
         <Link to="/export" className="btn outline full" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>出力画面を開く</Link>
+      </div>
+
+      <div className="card">
+        <h2>支出カテゴリ</h2>
+        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>既定カテゴリに加えて、独自のカテゴリを追加できます。</p>
+        <div className="tag-input" style={{ marginBottom: 10 }}>
+          {DEFAULT_EXPENSE_CATEGORIES.map((c) => (
+            <span key={c} className="chip" style={{ opacity: 0.7 }}>{c}</span>
+          ))}
+          {customCats.map((c) => (
+            <span key={c.id} className="chip" style={{ background: '#e8f5ee', color: 'var(--primary-strong)' }}>
+              {c.name}
+              <button type="button" onClick={() => delCat(c.id)} aria-label="削除">×</button>
+            </span>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            value={newCat}
+            onChange={(e) => setNewCat(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void addCat(); } }}
+            placeholder="新しいカテゴリ名"
+            style={{ flex: 1, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10 }}
+          />
+          <button className="btn" onClick={addCat} disabled={!newCat.trim()}>追加</button>
+        </div>
       </div>
 
       <div className="card">

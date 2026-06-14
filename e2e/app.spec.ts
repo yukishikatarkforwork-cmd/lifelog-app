@@ -34,6 +34,16 @@ test('新規登録 → 食事記録 → 合計反映 → ログアウト → 再
   await expect(page.getByText(FOOD)).toBeVisible();
   await expect(page.getByTestId('total-calories')).toHaveText(String(KCAL));
 
+  // --- 体調を保存（Phase 3）---
+  await page.getByTestId('condition-save').click();
+  await expect(page.getByText('保存しました ✓').first()).toBeVisible();
+
+  // --- 支出を追加（Phase 5）---
+  await page.getByTestId('add-expense').click();
+  await page.getByTestId('expense-amount').fill('1200');
+  await page.getByTestId('expense-save').click();
+  await expect(page.getByText('¥1,200').first()).toBeVisible();
+
   // --- 栄養目標を設定 → 今日の記録に「目標との比較」が出る ---
   await page.getByTestId('nav-settings').click();
   await page.getByTestId('goal-calories').fill('2000');

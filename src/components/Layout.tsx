@@ -3,7 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 const NAV = [
   { to: '/', label: '今日', icon: '🍽️', end: true, id: 'today' },
   { to: '/history', label: '履歴', icon: '📅', end: false, id: 'history' },
-  { to: '/graph', label: 'グラフ', icon: '📊', end: false, id: 'graph' },
+  { to: '/graph', label: '分析', icon: '📊', end: false, id: 'graph' },
   { to: '/templates', label: 'テンプレ', icon: '⭐', end: false, id: 'templates' },
   { to: '/settings', label: '設定', icon: '⚙️', end: false, id: 'settings' },
 ];

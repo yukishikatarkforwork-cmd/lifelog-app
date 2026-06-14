@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import type { DailyRecord, Expense, MealEntry, WeatherRecord } from '../lib/types';
 import { addDays, formatShort, todayStr } from '../lib/date';
 import { pfcKcal, sumNutrition } from '../lib/nutrition';
+import { correlationLabel, mean, pearson } from '../lib/analysis';
 
 const RANGES = [
   { days: 7, label: '7日' },
@@ -87,6 +88,72 @@ export default function GraphPage() {
   }, [expenses]);
   const expenseTotal = expenses.reduce((s, x) => s + (x.amount ?? 0), 0);
 
+  // 分析: KPI・相関・条件別平均体調
+  const analysis = useMemo(() => {
+    const condMap = new Map(conditions.map((r) => [r.date, r]));
+    const wMap = new Map(weathers.map((r) => [r.date, r]));
+    const kcalMap = new Map<string, number>();
+    for (const m of meals) kcalMap.set(m.date, (kcalMap.get(m.date) ?? 0) + (m.calories ?? 0));
+    const expMap = new Map<string, number>();
+    for (const e of expenses) expMap.set(e.date, (expMap.get(e.date) ?? 0) + (e.amount ?? 0));
+
+    const dates: string[] = [];
+    for (let i = 0; i < days; i++) dates.push(addDays(start, i));
+
+    // 気圧の前日差（記録のある気圧日同士）
+    const deltaMap = new Map<string, number>();
+    let prevP: number | null = null;
+    for (const d of dates) {
+      const p = wMap.get(d)?.pressure_hpa ?? null;
+      if (p != null) { if (prevP != null) deltaMap.set(d, p - prevP); prevP = p; }
+    }
+
+    const condScores: number[] = [], sleeps: number[] = [];
+    let totalKcal = 0, daysMeal = 0, totalExp = 0, daysExp = 0, recorded = 0;
+    const prPress: Array<[number, number]> = [], prDelta: Array<[number, number]> = [], prSleep: Array<[number, number]> = [];
+    const headNo: number[] = [], headYes: number[] = [], sleepGood: number[] = [], sleepShort: number[] = [], wSunny: number[] = [], wBad: number[] = [];
+
+    for (const d of dates) {
+      const c = condMap.get(d);
+      const k = kcalMap.get(d); const e = expMap.get(d); const w = wMap.get(d);
+      if (c || (k && k > 0) || (e && e > 0) || w) recorded++;
+      if (k != null && k > 0) { totalKcal += k; daysMeal++; }
+      if (e != null && e > 0) { totalExp += e; daysExp++; }
+      if (c?.sleep_hours != null) sleeps.push(c.sleep_hours);
+      if (c?.condition_score == null) continue;
+      const cs = c.condition_score;
+      condScores.push(cs);
+      const p = w?.pressure_hpa ?? null; if (p != null) prPress.push([cs, p]);
+      const dp = deltaMap.get(d); if (dp != null) prDelta.push([cs, dp]);
+      if (c.sleep_hours != null) prSleep.push([cs, c.sleep_hours]);
+      if (c.headache) headYes.push(cs); else headNo.push(cs);
+      if (c.sleep_hours != null) { if (c.sleep_hours >= 7) sleepGood.push(cs); else sleepShort.push(cs); }
+      if (w?.weather === 'sunny') wSunny.push(cs);
+      else if (w?.weather === 'rainy' || w?.weather === 'cloudy' || w?.weather === 'snowy') wBad.push(cs);
+    }
+
+    const r1 = (x: number | null) => (x == null ? null : Math.round(x * 10) / 10);
+    const groups = [
+      { label: '頭痛なし', value: mean(headNo) }, { label: '頭痛あり', value: mean(headYes) },
+      { label: '睡眠7h以上', value: mean(sleepGood) }, { label: '睡眠7h未満', value: mean(sleepShort) },
+      { label: '晴れ', value: mean(wSunny) }, { label: '雨・曇り', value: mean(wBad) },
+    ].filter((g) => g.value != null).map((g) => ({ label: g.label, value: r1(g.value)! }));
+
+    const correlations = [
+      { label: '体調 × 気圧', r: pearson(prPress) },
+      { label: '体調 × 気圧の前日差(Δ)', r: pearson(prDelta) },
+      { label: '体調 × 睡眠時間', r: pearson(prSleep) },
+    ];
+
+    return {
+      avgCondition: r1(mean(condScores)), avgSleep: r1(mean(sleeps)),
+      avgKcal: daysMeal ? Math.round(totalKcal / daysMeal) : null,
+      avgExpense: daysExp ? Math.round(totalExp / daysExp) : null,
+      continuity: Math.round((recorded / days) * 100), recorded, totalDays: days,
+      groups, correlations,
+    };
+  }, [conditions, weathers, meals, expenses, start, days]);
+
   const rangeTotal = useMemo(() => sumNutrition(meals), [meals]);
   const k = pfcKcal(rangeTotal);
   const pieData = [
@@ -110,6 +177,60 @@ export default function GraphPage() {
 
       {!loading && (
         <>
+          {/* 期間サマリー */}
+          <div className="card">
+            <h2>期間サマリー</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+              {[
+                { label: '平均体調', value: analysis.avgCondition != null ? `${analysis.avgCondition} / 5` : '—' },
+                { label: '平均睡眠', value: analysis.avgSleep != null ? `${analysis.avgSleep} h` : '—' },
+                { label: '平均摂取カロリー', value: analysis.avgKcal != null ? `${analysis.avgKcal} kcal` : '—' },
+                { label: '平均支出/日', value: analysis.avgExpense != null ? `¥${analysis.avgExpense.toLocaleString()}` : '—' },
+              ].map((s) => (
+                <div key={s.label} style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
+                  <div className="muted" style={{ fontSize: 11 }}>{s.label}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700 }}>{s.value}</div>
+                </div>
+              ))}
+              <div style={{ gridColumn: '1 / -1', background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
+                <div className="muted" style={{ fontSize: 11 }}>記録継続率</div>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>
+                  {analysis.continuity}% <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>({analysis.recorded}/{analysis.totalDays}日)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 相関分析 */}
+          <div className="card">
+            <h2>相関分析（体調との関係）</h2>
+            <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>相関係数 r（−1〜+1）。記録が3日以上ある項目のみ。気圧は急な低下（Δが負）ほど体調が下がりやすい傾向を見ます。</p>
+            {analysis.correlations.map((c) => (
+              <div className="row-between" key={c.label} style={{ padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+                <span style={{ fontSize: 13 }}>{c.label}</span>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>
+                  {c.r == null ? <span className="muted" style={{ fontWeight: 400 }}>データ不足</span> : `${c.r > 0 ? '+' : ''}${c.r.toFixed(2)}（${correlationLabel(c.r)}）`}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* 条件別の平均体調 */}
+          {analysis.groups.length > 0 && (
+            <div className="card">
+              <h2>条件別の平均体調</h2>
+              <ResponsiveContainer width="100%" height={Math.max(150, analysis.groups.length * 36)}>
+                <BarChart data={analysis.groups} layout="vertical" margin={{ top: 0, right: 28, left: 28, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" domain={[0, 5]} tick={{ fontSize: 10 }} />
+                  <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} width={84} />
+                  <Tooltip />
+                  <Bar dataKey="value" name="平均体調" fill="#2f8f6b" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
           {/* 体調×気圧 */}
           <div className="card">
             <h2>体調 × 気圧</h2>

@@ -5,6 +5,7 @@ import type { MealEntry } from '../lib/types';
 import { MEAL_LABELS } from '../lib/types';
 import { formatShort } from '../lib/date';
 import { fmt, sumNutrition } from '../lib/nutrition';
+import CalendarView from '../components/CalendarView';
 
 export default function HistoryPage() {
   const [entries, setEntries] = useState<MealEntry[]>([]);
@@ -12,6 +13,7 @@ export default function HistoryPage() {
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [view, setView] = useState<'list' | 'calendar'>('list');
 
   useEffect(() => {
     (async () => {
@@ -66,6 +68,14 @@ export default function HistoryPage() {
     <div className="page">
       <h2 style={{ marginTop: 0 }}>記録履歴</h2>
 
+      <div className="tabs">
+        <button className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}>リスト</button>
+        <button className={view === 'calendar' ? 'active' : ''} onClick={() => setView('calendar')}>カレンダー</button>
+      </div>
+
+      {view === 'calendar' && <CalendarView />}
+
+      {view === 'list' && (<>
       {/* 検索・絞り込み */}
       <div className="card">
         <input
@@ -140,6 +150,7 @@ export default function HistoryPage() {
           );
         })
       )}
+      </>)}
     </div>
   );
 }

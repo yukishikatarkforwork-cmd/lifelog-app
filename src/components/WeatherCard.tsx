@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import type { WeatherKey, WeatherRecord } from '../lib/types';
 import { WEATHER_OPTIONS } from '../lib/types';
 import { parseNum } from '../lib/nutrition';
+import { useReload } from '../lib/useReload';
 
 export default function WeatherCard({ date }: { date: string }) {
   const { user } = useAuth();
@@ -16,7 +17,7 @@ export default function WeatherCard({ date }: { date: string }) {
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState('');
 
-  const load = useCallback(async () => {
+  useReload(async () => {
     const { data } = await supabase.from('weather_records').select('*').eq('date', date).maybeSingle();
     const r = data as WeatherRecord | null;
     setWeather(r?.weather ?? null);
@@ -26,8 +27,6 @@ export default function WeatherCard({ date }: { date: string }) {
     setMemo(r?.memo ?? '');
     setSaved(false);
   }, [date]);
-
-  useEffect(() => { void load(); }, [load]);
 
   const save = async () => {
     if (!user) return;

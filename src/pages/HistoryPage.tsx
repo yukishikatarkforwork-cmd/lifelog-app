@@ -117,7 +117,9 @@ export default function HistoryPage() {
                 </div>
                 <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
                   {formatShort(e.date)} ・ {MEAL_LABELS[e.meal_type]}
-                  {e.tags?.length > 0 && <>　{e.tags.map((t) => <span className="tag" key={t}>{t}</span>)}</>}
+                  {e.tags?.length > 0 && (
+                    <span style={{ marginLeft: 8 }}>{e.tags.map((t) => <span className="tag" key={t}>{t}</span>)}</span>
+                  )}
                 </div>
               </Link>
             ))}

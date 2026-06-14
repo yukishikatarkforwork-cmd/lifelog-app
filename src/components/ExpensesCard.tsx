@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import type { Expense, ExpenseCategory } from '../lib/types';
 import { DEFAULT_EXPENSE_CATEGORIES, PAYMENT_METHODS } from '../lib/types';
 import { parseNum } from '../lib/nutrition';
+import { useReload } from '../lib/useReload';
+import { useToast } from '../context/ToastContext';
 
 export default function ExpensesCard({ date }: { date: string }) {
   const { user } = useAuth();
+  const toast = useToast();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [customCats, setCustomCats] = useState<ExpenseCategory[]>([]);
   const [formOpen, setFormOpen] = useState(false);
@@ -19,7 +22,7 @@ export default function ExpensesCard({ date }: { date: string }) {
     return names;
   }, [customCats]);
 
-  const load = useCallback(async () => {
+  const reload = useReload(async () => {
     const [exp, cats] = await Promise.all([
       supabase.from('expenses').select('*').eq('date', date).order('created_at'),
       supabase.from('expense_categories').select('*').order('created_at'),
@@ -29,15 +32,14 @@ export default function ExpensesCard({ date }: { date: string }) {
     setCustomCats((cats.data as ExpenseCategory[]) ?? []);
   }, [date]);
 
-  useEffect(() => { void load(); }, [load]);
-
   const total = expenses.reduce((s, e) => s + (e.amount ?? 0), 0);
 
   const del = async (id: string) => {
     if (!confirm('この支出を削除しますか？')) return;
     const { error } = await supabase.from('expenses').delete().eq('id', id);
     if (error) { setErr(error.message); return; }
-    await load();
+    await reload();
+    toast('支出を削除しました');
   };
 
   return (
@@ -53,10 +55,10 @@ export default function ExpensesCard({ date }: { date: string }) {
       ) : (
         expenses.map((e) => (
           <div className="entry" key={e.id}>
-            <div className="main" style={{ cursor: 'pointer' }} onClick={() => { setEditing(e); setFormOpen(true); }}>
+            <button type="button" className="main entry-main" onClick={() => { setEditing(e); setFormOpen(true); }}>
               <div className="name">{e.category} <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>{e.payment_method ?? ''}</span></div>
               {e.memo && <div className="sub">📝 {e.memo}</div>}
-            </div>
+            </button>
             <div style={{ textAlign: 'right' }}>
               <div className="kcal" style={{ color: 'var(--text)' }}>¥{e.amount.toLocaleString()}</div>
               <button className="btn ghost small" onClick={() => del(e.id)} aria-label="削除">🗑</button>
@@ -72,7 +74,7 @@ export default function ExpensesCard({ date }: { date: string }) {
           categories={categories}
           initial={editing}
           onClose={() => { setFormOpen(false); setEditing(null); }}
-          onSaved={async () => { setFormOpen(false); setEditing(null); await load(); }}
+          onSaved={async () => { setFormOpen(false); setEditing(null); await reload(); toast('支出を保存しました'); }}
         />
       )}
     </div>

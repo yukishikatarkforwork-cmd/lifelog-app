@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { DailyRecord, Expense, MealEntry, WeatherRecord } from '../lib/types';
 import { addDays, todayStr } from '../lib/date';
 import { toCSV, toExpensesCSV, toDailyMarkdown } from '../lib/export';
+import { useReload } from '../lib/useReload';
 
 // Excel が UTF-8 の日本語を正しく開けるよう先頭に付ける BOM マーカー
 const BOM = String.fromCharCode(0xfeff);
@@ -30,7 +31,7 @@ export default function ExportPage() {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const load = useCallback(async () => {
+  useReload(async () => {
     setLoading(true);
     setError('');
     const [m, c, w, e] = await Promise.all([
@@ -47,8 +48,6 @@ export default function ExportPage() {
     setExpenses((e.data as Expense[]) ?? []);
     setLoading(false);
   }, [start, end]);
-
-  useEffect(() => { void load(); }, [load]);
 
   const title = `生活記録 ${start} 〜 ${end}`;
   const md = useMemo(

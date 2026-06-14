@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import type { FoodTemplate, MealEntry, MealEntryInput, MealTemplate, MealType, NutritionGoals } from '../lib/types';
 import { EMPTY_GOALS, MEAL_LABELS, MEAL_TYPES } from '../lib/types';
 import { addDays, formatDisplay, todayStr } from '../lib/date';
 import { fmt, parseNum, sumNutrition } from '../lib/nutrition';
+import { useReload } from '../lib/useReload';
 import DayTotals from '../components/DayTotals';
 import MealEntryForm from '../components/MealEntryForm';
 import ConditionCard from '../components/ConditionCard';
@@ -26,8 +28,12 @@ const entryToInput = (e: MealEntry): MealEntryInput => ({
 
 export default function TodayPage() {
   const { user } = useAuth();
+  const toast = useToast();
+  const navigate = useNavigate();
   const params = useParams();
-  const [date, setDate] = useState(params.date ?? todayStr());
+  // URL を日付の単一の真実とし、ローカル state には持たない（戻る/進む・URL 共有が効く）
+  const date = params.date ?? todayStr();
+  const goToDate = (d: string) => navigate(`/day/${d}`);
 
   const [entries, setEntries] = useState<MealEntry[]>([]);
   const [foodTemplates, setFoodTemplates] = useState<FoodTemplate[]>([]);
@@ -41,11 +47,7 @@ export default function TodayPage() {
   const [formMealType, setFormMealType] = useState<MealType>('breakfast');
   const [editing, setEditing] = useState<MealEntry | null>(null);
 
-  useEffect(() => {
-    if (params.date) setDate(params.date);
-  }, [params.date]);
-
-  const load = useCallback(async () => {
+  const reload = useReload(async () => {
     if (!user) return;
     setLoading(true);
     setError('');
@@ -61,9 +63,7 @@ export default function TodayPage() {
     setAutoTemplates((autoRes.data as MealTemplate[]) ?? []);
     setGoals((settingsRes.data as NutritionGoals) ?? EMPTY_GOALS);
     setLoading(false);
-  }, [user, date]);
-
-  useEffect(() => { void load(); }, [load]);
+  }, [user?.id, date]);
 
   const total = useMemo(() => sumNutrition(entries), [entries]);
 
@@ -92,14 +92,16 @@ export default function TodayPage() {
     }
     setFormOpen(false);
     setEditing(null);
-    await load();
+    await reload();
+    toast(editing ? '記録を更新しました' : '食事を記録しました');
   };
 
   const deleteEntry = async (id: string) => {
     if (!confirm('この記録を削除しますか？')) return;
     const { error } = await supabase.from('meal_entries').delete().eq('id', id);
     if (error) { setError(error.message); return; }
-    await load();
+    await reload();
+    toast('記録を削除しました');
   };
 
   const applyAutoTemplates = async () => {
@@ -122,7 +124,8 @@ export default function TodayPage() {
     if (rows.length === 0) return;
     const { error } = await supabase.from('meal_entries').insert(rows);
     if (error) { setError(error.message); return; }
-    await load();
+    await reload();
+    toast('自動セットを反映しました');
   };
 
   const openAdd = (mealType: MealType) => {
@@ -142,15 +145,24 @@ export default function TodayPage() {
   return (
     <div className="page">
       <div className="date-nav">
-        <button onClick={() => setDate(addDays(date, -1))} aria-label="前日">‹</button>
-        <div className="label">
-          {formatDisplay(date)}
-          {!isToday && (
-            <div><button className="link-btn" style={{ fontSize: 12 }} onClick={() => setDate(todayStr())}>今日に戻る</button></div>
-          )}
-        </div>
-        <button onClick={() => setDate(addDays(date, 1))} aria-label="翌日">›</button>
+        <button onClick={() => goToDate(addDays(date, -1))} aria-label="前日">‹</button>
+        <label className="date-jump" title="タップで日付を選択">
+          <span className="label">📅 {formatDisplay(date)}</span>
+          <input
+            type="date"
+            aria-label="日付を選択"
+            value={date}
+            max={todayStr()}
+            onChange={(e) => { if (e.target.value) goToDate(e.target.value); }}
+          />
+        </label>
+        <button onClick={() => goToDate(addDays(date, 1))} aria-label="翌日">›</button>
       </div>
+      {!isToday && (
+        <div className="center" style={{ marginTop: -6, marginBottom: 12 }}>
+          <button className="link-btn" onClick={() => navigate('/')}>今日に戻る</button>
+        </div>
+      )}
 
       {error && <div className="error-box">{error}</div>}
 
@@ -184,7 +196,7 @@ export default function TodayPage() {
               ) : (
                 list.map((e) => (
                   <div className="entry" key={e.id}>
-                    <div className="main" onClick={() => openEdit(e)} style={{ cursor: 'pointer' }}>
+                    <button type="button" className="main entry-main" onClick={() => openEdit(e)}>
                       <div className="name">{e.food_name}</div>
                       <div className="sub">
                         {e.amount ? `${e.amount}・` : ''}
@@ -194,7 +206,7 @@ export default function TodayPage() {
                       {e.tags?.length > 0 && (
                         <div>{e.tags.map((t) => <span className="tag" key={t}>{t}</span>)}</div>
                       )}
-                    </div>
+                    </button>
                     <div style={{ textAlign: 'right' }}>
                       <div className="kcal">{fmt(e.calories ?? 0)}</div>
                       <button className="btn ghost small" onClick={() => deleteEntry(e.id)} aria-label="削除">🗑</button>

@@ -8,6 +8,7 @@ import HistoryPage from './pages/HistoryPage';
 import GraphPage from './pages/GraphPage';
 import TemplatesPage from './pages/TemplatesPage';
 import SettingsPage from './pages/SettingsPage';
+import ExportPage from './pages/ExportPage';
 import SetupNotice from './components/SetupNotice';
 
 export default function App() {
@@ -38,6 +39,7 @@ export default function App() {
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/graph" element={<GraphPage />} />
         <Route path="/templates" element={<TemplatesPage />} />
+        <Route path="/export" element={<ExportPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

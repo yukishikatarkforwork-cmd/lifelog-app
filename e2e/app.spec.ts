@@ -34,6 +34,15 @@ test('新規登録 → 食事記録 → 合計反映 → ログアウト → 再
   await expect(page.getByText(FOOD)).toBeVisible();
   await expect(page.getByTestId('total-calories')).toHaveText(String(KCAL));
 
+  // --- 栄養目標を設定 → 今日の記録に「目標との比較」が出る ---
+  await page.getByTestId('nav-settings').click();
+  await page.getByTestId('goal-calories').fill('2000');
+  await page.getByTestId('goal-save').click();
+  await expect(page.getByText('栄養目標を保存しました。')).toBeVisible();
+  await page.getByTestId('nav-today').click();
+  await expect(page.getByText('目標との比較')).toBeVisible();
+  await expect(page.getByText(`${KCAL} / 2000 kcal`)).toBeVisible();
+
   // --- ログアウト ---
   await page.getByTestId('nav-settings').click();
   await page.getByTestId('logout').click();

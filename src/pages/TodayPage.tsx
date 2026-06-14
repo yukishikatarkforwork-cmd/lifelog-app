@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import type { FoodTemplate, MealEntry, MealEntryInput, MealTemplate, MealType } from '../lib/types';
-import { MEAL_LABELS, MEAL_TYPES } from '../lib/types';
+import type { FoodTemplate, MealEntry, MealEntryInput, MealTemplate, MealType, NutritionGoals } from '../lib/types';
+import { EMPTY_GOALS, MEAL_LABELS, MEAL_TYPES } from '../lib/types';
 import { addDays, formatDisplay, todayStr } from '../lib/date';
 import { fmt, parseNum, sumNutrition } from '../lib/nutrition';
 import DayTotals from '../components/DayTotals';
@@ -29,6 +29,7 @@ export default function TodayPage() {
   const [entries, setEntries] = useState<MealEntry[]>([]);
   const [foodTemplates, setFoodTemplates] = useState<FoodTemplate[]>([]);
   const [autoTemplates, setAutoTemplates] = useState<MealTemplate[]>([]);
+  const [goals, setGoals] = useState<NutritionGoals>(EMPTY_GOALS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -45,15 +46,17 @@ export default function TodayPage() {
     if (!user) return;
     setLoading(true);
     setError('');
-    const [entriesRes, foodRes, autoRes] = await Promise.all([
+    const [entriesRes, foodRes, autoRes, settingsRes] = await Promise.all([
       supabase.from('meal_entries').select('*').eq('date', date).order('created_at'),
       supabase.from('food_templates').select('*').order('name'),
       supabase.from('meal_templates').select('*').eq('auto_apply', true),
+      supabase.from('user_settings').select('*').maybeSingle(),
     ]);
     if (entriesRes.error) setError(entriesRes.error.message);
     setEntries((entriesRes.data as MealEntry[]) ?? []);
     setFoodTemplates((foodRes.data as FoodTemplate[]) ?? []);
     setAutoTemplates((autoRes.data as MealTemplate[]) ?? []);
+    setGoals((settingsRes.data as NutritionGoals) ?? EMPTY_GOALS);
     setLoading(false);
   }, [user, date]);
 
@@ -148,7 +151,7 @@ export default function TodayPage() {
 
       {error && <div className="error-box">{error}</div>}
 
-      <DayTotals total={total} />
+      <DayTotals total={total} goals={goals} />
 
       {!loading && entries.length === 0 && autoItemCount > 0 && (
         <div className="info-box row-between">

@@ -79,3 +79,24 @@ export interface MealTemplate {
   created_at: string;
   updated_at: string;
 }
+
+/** 1日の栄養目標（未設定は null） */
+export interface NutritionGoals {
+  target_calories: number | null;
+  target_protein: number | null;
+  target_fat: number | null;
+  target_carbohydrate: number | null;
+}
+
+export interface UserSettings extends NutritionGoals {
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const EMPTY_GOALS: NutritionGoals = {
+  target_calories: null,
+  target_protein: null,
+  target_fat: null,
+  target_carbohydrate: null,
+};

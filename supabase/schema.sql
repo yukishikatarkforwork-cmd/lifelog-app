@@ -101,3 +101,30 @@ create policy "own meal_templates" on public.meal_templates
 grant select, insert, update, delete on public.meal_entries   to authenticated;
 grant select, insert, update, delete on public.food_templates to authenticated;
 grant select, insert, update, delete on public.meal_templates to authenticated;
+
+-- =====================================================================
+-- Phase 2: 栄養目標設定（ユーザーごとに1行）
+-- =====================================================================
+create table if not exists public.user_settings (
+  user_id            uuid primary key references auth.users (id) on delete cascade,
+  target_calories    numeric,
+  target_protein     numeric,
+  target_fat         numeric,
+  target_carbohydrate numeric,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+
+drop trigger if exists trg_user_settings_updated on public.user_settings;
+create trigger trg_user_settings_updated before update on public.user_settings
+  for each row execute function public.set_updated_at();
+
+alter table public.user_settings enable row level security;
+
+drop policy if exists "own user_settings" on public.user_settings;
+create policy "own user_settings" on public.user_settings
+  for all to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+grant select, insert, update, delete on public.user_settings to authenticated;

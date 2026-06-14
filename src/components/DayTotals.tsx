@@ -1,10 +1,36 @@
-import type { Nutrition } from '../lib/types';
+import type { Nutrition, NutritionGoals } from '../lib/types';
 import { fmt, pfcKcal } from '../lib/nutrition';
 
-export default function DayTotals({ total }: { total: Nutrition }) {
+function GoalRow({
+  label, current, target, unit, color,
+}: { label: string; current: number; target: number; unit: string; color: string }) {
+  const pct = target > 0 ? (current / target) * 100 : 0;
+  const over = current > target;
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div className="row-between" style={{ fontSize: 12, marginBottom: 3 }}>
+        <span className="muted">{label}</span>
+        <span>
+          {fmt(current)} / {fmt(target)} {unit}{' '}
+          <span style={{ color: over ? 'var(--danger)' : 'var(--muted)' }}>({Math.round(pct)}%)</span>
+        </span>
+      </div>
+      <div style={{ height: 6, borderRadius: 999, background: '#eef2f7', overflow: 'hidden' }}>
+        <div style={{ width: `${Math.min(100, pct)}%`, height: '100%', background: over ? 'var(--danger)' : color }} />
+      </div>
+    </div>
+  );
+}
+
+export default function DayTotals({ total, goals }: { total: Nutrition; goals?: NutritionGoals }) {
   const k = pfcKcal(total);
   const sum = k.protein + k.fat + k.carbohydrate;
   const pct = (v: number) => (sum > 0 ? (v / sum) * 100 : 0);
+
+  const hasGoal = goals != null && (
+    goals.target_calories != null || goals.target_protein != null ||
+    goals.target_fat != null || goals.target_carbohydrate != null
+  );
 
   return (
     <div className="card">
@@ -44,6 +70,24 @@ export default function DayTotals({ total }: { total: Nutrition }) {
             <span><span className="dot" style={{ background: 'var(--carb)' }} />C {Math.round(pct(k.carbohydrate))}%</span>
           </div>
         </>
+      )}
+
+      {hasGoal && (
+        <div style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+          <div className="muted" style={{ fontSize: 11, marginBottom: 8 }}>目標との比較</div>
+          {goals!.target_calories != null && (
+            <GoalRow label="カロリー" current={total.calories} target={goals!.target_calories} unit="kcal" color="var(--kcal)" />
+          )}
+          {goals!.target_protein != null && (
+            <GoalRow label="たんぱく質" current={total.protein} target={goals!.target_protein} unit="g" color="var(--protein)" />
+          )}
+          {goals!.target_fat != null && (
+            <GoalRow label="脂質" current={total.fat} target={goals!.target_fat} unit="g" color="var(--fat)" />
+          )}
+          {goals!.target_carbohydrate != null && (
+            <GoalRow label="炭水化物" current={total.carbohydrate} target={goals!.target_carbohydrate} unit="g" color="var(--carb)" />
+          )}
+        </div>
       )}
     </div>
   );

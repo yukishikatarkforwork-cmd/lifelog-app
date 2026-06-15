@@ -20,7 +20,11 @@ create table if not exists public.meal_entries (
   memo         text,
   tags         text[] not null default '{}',
   created_at   timestamptz not null default now(),
-  updated_at   timestamptz not null default now()
+  updated_at   timestamptz not null default now(),
+  constraint meal_entries_nutrition_nonneg check (
+    (calories is null or calories >= 0) and (protein is null or protein >= 0)
+    and (fat is null or fat >= 0) and (carbohydrate is null or carbohydrate >= 0)
+  )
 );
 create index if not exists meal_entries_user_date_idx on public.meal_entries (user_id, date);
 
@@ -35,7 +39,11 @@ create table if not exists public.food_templates (
   fat          numeric,
   carbohydrate numeric,
   created_at   timestamptz not null default now(),
-  updated_at   timestamptz not null default now()
+  updated_at   timestamptz not null default now(),
+  constraint food_templates_nutrition_nonneg check (
+    (calories is null or calories >= 0) and (protein is null or protein >= 0)
+    and (fat is null or fat >= 0) and (carbohydrate is null or carbohydrate >= 0)
+  )
 );
 create index if not exists food_templates_user_idx on public.food_templates (user_id);
 
@@ -143,7 +151,12 @@ create table if not exists public.daily_records (
   memo            text,
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now(),
-  primary key (user_id, date)
+  primary key (user_id, date),
+  constraint daily_records_score_range check (
+    (condition_score is null or condition_score between 1 and 5)
+    and (mood_score is null or mood_score between 1 and 5)
+    and (sleep_hours is null or (sleep_hours >= 0 and sleep_hours <= 24))
+  )
 );
 
 -- =====================================================================
@@ -159,7 +172,11 @@ create table if not exists public.weather_records (
   memo         text,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
-  primary key (user_id, date)
+  primary key (user_id, date),
+  constraint weather_records_range check (
+    (pressure_hpa is null or pressure_hpa > 0)
+    and (humidity is null or (humidity >= 0 and humidity <= 100))
+  )
 );
 
 -- =====================================================================
@@ -169,7 +186,7 @@ create table if not exists public.expenses (
   id             uuid primary key default gen_random_uuid(),
   user_id        uuid not null references auth.users (id) on delete cascade,
   date           date not null,
-  amount         numeric not null,
+  amount         numeric not null check (amount >= 0),
   category       text not null,
   payment_method text,
   memo           text,

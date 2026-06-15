@@ -56,7 +56,8 @@ npm install
 ### 2. Supabase プロジェクト作成
 
 1. <https://supabase.com> でプロジェクトを作成
-2. **SQL Editor** で [`supabase/schema.sql`](supabase/schema.sql) を貼り付けて実行（テーブル・RLS・トリガを作成）
+2. **SQL Editor** で [`supabase/schema.sql`](supabase/schema.sql) を貼り付けて実行（テーブル・RLS・トリガ・CHECK 制約を作成）
+   - すでに旧バージョンの DB を構築済みの場合は、[`supabase/migrations/`](supabase/migrations) 内の SQL を番号順に実行して整合性制約を追加（冪等・再実行可）
 3. **Project Settings > API** から `Project URL` と `anon public` キーを取得
 
 ### 3. 環境変数

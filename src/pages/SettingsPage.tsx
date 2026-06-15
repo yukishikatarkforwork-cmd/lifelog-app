@@ -83,14 +83,24 @@ export default function SettingsPage() {
 
   const deleteAllData = async () => {
     if (!user) return;
-    if (!confirm('すべての食事記録・テンプレートを削除します。元に戻せません。よろしいですか？')) return;
+    if (!confirm('体調・食事・天気気圧・家計簿・テンプレート・栄養目標を含む、すべての記録を削除します。元に戻せません。よろしいですか？')) return;
     setErr('');
     setMsg('');
-    const r1 = await supabase.from('meal_entries').delete().eq('user_id', user.id);
-    const r2 = await supabase.from('meal_templates').delete().eq('user_id', user.id);
-    const r3 = await supabase.from('food_templates').delete().eq('user_id', user.id);
-    const e = r1.error || r2.error || r3.error;
+    // user_id を持つ全テーブルを対象に削除する（取りこぼしがあると「全削除」の表記と矛盾するため）
+    const results = await Promise.all([
+      supabase.from('meal_entries').delete().eq('user_id', user.id),
+      supabase.from('meal_templates').delete().eq('user_id', user.id),
+      supabase.from('food_templates').delete().eq('user_id', user.id),
+      supabase.from('daily_records').delete().eq('user_id', user.id),
+      supabase.from('weather_records').delete().eq('user_id', user.id),
+      supabase.from('expenses').delete().eq('user_id', user.id),
+      supabase.from('expense_categories').delete().eq('user_id', user.id),
+      supabase.from('user_settings').delete().eq('user_id', user.id),
+    ]);
+    const e = results.find((r) => r.error)?.error;
     if (e) { setErr(e.message); return; }
+    setCustomCats([]);
+    setCal(''); setPro(''); setFat(''); setCarb('');
     setMsg('すべてのデータを削除しました。');
   };
 

@@ -215,6 +215,8 @@ export default function GraphPage() {
             ))}
           </div>
 
+          <div className="graph-grid">
+
           {/* 条件別の平均体調 */}
           {analysis.groups.length > 0 && (
             <div className="card">
@@ -258,20 +260,39 @@ export default function GraphPage() {
             {byCategory.length === 0 ? (
               <div className="muted" style={{ fontSize: 13 }}>支出の記録がありません。</div>
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie data={byCategory} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={(d) => d.name}>
-                    {byCategory.map((d) => <Cell key={d.name} fill={d.color} />)}
-                  </Pie>
-                  <Tooltip formatter={(v) => `¥${Number(v).toLocaleString()}`} />
-                </PieChart>
-              </ResponsiveContainer>
+              <>
+                <ResponsiveContainer width="100%" height={180}>
+                  <PieChart>
+                    <Pie data={byCategory} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70}>
+                      {byCategory.map((d) => <Cell key={d.name} fill={d.color} />)}
+                    </Pie>
+                    <Tooltip formatter={(v) => `¥${Number(v).toLocaleString()}`} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                  {byCategory.map((d) => {
+                    const pct = expenseTotal > 0 ? Math.round(d.value / expenseTotal * 100) : 0;
+                    return (
+                      <div key={d.name} className="row-between" style={{ fontSize: 13 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                          <span style={{ width: 10, height: 10, borderRadius: 2, background: d.color, flexShrink: 0, display: 'inline-block' }} />
+                          {d.name}
+                        </span>
+                        <span>
+                          <span className="muted" style={{ marginRight: 10 }}>{pct}%</span>
+                          <span style={{ fontWeight: 600 }}>¥{d.value.toLocaleString()}</span>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
 
           {/* 栄養（既存） */}
           {meals.length === 0 ? (
-            <div className="card"><div className="muted" style={{ fontSize: 13 }}>この期間の食事記録がありません。</div></div>
+            <div className="card graph-grid-full"><div className="muted" style={{ fontSize: 13 }}>この期間の食事記録がありません。</div></div>
           ) : (
             <>
               <div className="card">
@@ -306,18 +327,41 @@ export default function GraphPage() {
               {pieData.length > 0 && (
                 <div className="card">
                   <h2>PFC バランス（期間合計・カロリー比）</h2>
-                  <ResponsiveContainer width="100%" height={220}>
+                  <ResponsiveContainer width="100%" height={180}>
                     <PieChart>
-                      <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={(d) => d.name}>
+                      <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70}>
                         {pieData.map((d) => <Cell key={d.name} fill={d.color} />)}
                       </Pie>
                       <Tooltip formatter={(v) => `${v} kcal`} />
                     </PieChart>
                   </ResponsiveContainer>
+                  {(() => {
+                    const total = pieData.reduce((s, d) => s + d.value, 0);
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                        {pieData.map((d) => {
+                          const pct = total > 0 ? Math.round(d.value / total * 100) : 0;
+                          return (
+                            <div key={d.name} className="row-between" style={{ fontSize: 13 }}>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                                <span style={{ width: 10, height: 10, borderRadius: 2, background: d.color, flexShrink: 0, display: 'inline-block' }} />
+                                {d.name}
+                              </span>
+                              <span>
+                                <span className="muted" style={{ marginRight: 10 }}>{pct}%</span>
+                                <span style={{ fontWeight: 600 }}>{d.value} kcal</span>
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </>
           )}
+          </div>{/* /graph-grid */}
         </>
       )}
     </div>

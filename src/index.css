@@ -123,9 +123,8 @@ input, select, textarea {
   font-size: 11px;
   transition: color 0.15s ease, background 0.15s ease;
 }
-.bottom-nav a .icon { font-size: 20px; line-height: 1; transition: transform 0.12s ease; }
-.bottom-nav a.active { color: var(--primary-strong); font-weight: 700; }
-.bottom-nav a.active .icon { transform: translateY(-1px) scale(1.08); }
+.bottom-nav a .icon { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; }
+.bottom-nav a.active { color: var(--primary); font-weight: 600; }
 .bottom-nav a:active { background: var(--fill); }
 
 /* ---------- カード ---------- */
@@ -322,6 +321,39 @@ a.card:active { transform: translateY(1px); }
   animation: toast-in 0.2s ease;
 }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* ---------- デスクトップ対応 (≥768px) ---------- */
+.desktop-nav { display: none; }
+
+@media (min-width: 768px) {
+  .app-shell {
+    max-width: 960px;
+    padding-bottom: 0;
+  }
+  .page { padding: 24px 28px 32px; }
+  .app-header { padding: 0 24px; }
+  .bottom-nav { display: none; }
+  .desktop-nav {
+    display: flex;
+    gap: 2px;
+  }
+  .desktop-nav a {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 8px;
+    text-decoration: none;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 13px; font-weight: 500;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .desktop-nav a .icon { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; }
+  .desktop-nav a svg { width: 16px; height: 16px; }
+  .desktop-nav a:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+  .desktop-nav a.active { background: rgba(255, 255, 255, 0.18); color: #fff; font-weight: 600; }
+  /* 分析ダッシュボード 2カラムグリッド */
+  .graph-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .graph-grid > .card { margin-bottom: 0; }
+  .graph-grid-full { grid-column: 1 / -1; }
+}
 
 /* モーション過敏設定を尊重し、アニメーション/トランジションを抑制する */
 @media (prefers-reduced-motion: reduce) {

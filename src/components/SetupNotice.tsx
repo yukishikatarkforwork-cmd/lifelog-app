@@ -11,7 +11,7 @@ export default function SetupNotice() {
         <p className="muted" style={{ fontSize: 13, lineHeight: 1.7 }}>
           プロジェクト直下に <code>.env</code> を作成し、Supabase の接続情報を設定してください。
         </p>
-        <pre style={{ background: '#f1f5f9', padding: 12, borderRadius: 8, fontSize: 12, overflowX: 'auto' }}>
+        <pre style={{ background: 'var(--fill-2)', color: 'var(--text)', padding: 12, borderRadius: 8, fontSize: 12, overflowX: 'auto' }}>
 {`VITE_SUPABASE_URL=https://xxxx.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJhbGci...`}
         </pre>

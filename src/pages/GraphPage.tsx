@@ -187,12 +187,12 @@ export default function GraphPage() {
                 { label: '平均摂取カロリー', value: analysis.avgKcal != null ? `${analysis.avgKcal} kcal` : '—' },
                 { label: '平均支出/日', value: analysis.avgExpense != null ? `¥${analysis.avgExpense.toLocaleString()}` : '—' },
               ].map((s) => (
-                <div key={s.label} style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
+                <div key={s.label} style={{ background: 'var(--fill-2)', borderRadius: 10, padding: '10px 12px' }}>
                   <div className="muted" style={{ fontSize: 11 }}>{s.label}</div>
                   <div style={{ fontSize: 18, fontWeight: 700 }}>{s.value}</div>
                 </div>
               ))}
-              <div style={{ gridColumn: '1 / -1', background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
+              <div style={{ gridColumn: '1 / -1', background: 'var(--fill-2)', borderRadius: 10, padding: '10px 12px' }}>
                 <div className="muted" style={{ fontSize: 11 }}>記録継続率</div>
                 <div style={{ fontSize: 18, fontWeight: 700 }}>
                   {analysis.continuity}% <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>({analysis.recorded}/{analysis.totalDays}日)</span>

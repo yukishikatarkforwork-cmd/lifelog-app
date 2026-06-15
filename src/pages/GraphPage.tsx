@@ -14,8 +14,8 @@ const RANGES = [
   { days: 14, label: '14日' },
   { days: 30, label: '30日' },
 ];
-const COLORS = { protein: '#ef4444', fat: '#8b5cf6', carb: '#3b82f6', kcal: '#f59e0b', condition: '#2f8f6b', pressure: '#3b82f6' };
-const CAT_PALETTE = ['#2f8f6b', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#ec4899', '#a3a3a3'];
+const COLORS = { protein: '#e07070', fat: '#c4954a', carb: '#6baac0', kcal: '#e9a94d', condition: '#2f8f6b', pressure: '#6baac0' };
+const CAT_PALETTE = ['#2f8f6b', '#6baac0', '#e9a94d', '#e07070', '#7ab5a0', '#c4954a', '#8fa8b8', '#a3a3a3'];
 
 export default function GraphPage() {
   const [days, setDays] = useState(7);

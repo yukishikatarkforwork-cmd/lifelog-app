@@ -5,6 +5,7 @@ import type { WeatherKey, WeatherRecord } from '../lib/types';
 import { WEATHER_OPTIONS } from '../lib/types';
 import { parseNum } from '../lib/nutrition';
 import { useReload } from '../lib/useReload';
+import { IconWeather } from './icons';
 
 export default function WeatherCard({ date }: { date: string }) {
   const { user } = useAuth();
@@ -48,7 +49,7 @@ export default function WeatherCard({ date }: { date: string }) {
 
   return (
     <div className="card">
-      <div className="section-title"><h2>🌤️ 天気・気圧</h2></div>
+      <div className="section-title"><h2><IconWeather /> 天気・気圧</h2></div>
       {err && <div className="error-box">{err}</div>}
 
       <div className="field">

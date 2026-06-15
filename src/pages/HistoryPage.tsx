@@ -6,6 +6,7 @@ import { MEAL_LABELS } from '../lib/types';
 import { formatShort } from '../lib/date';
 import { fmt, sumNutrition } from '../lib/nutrition';
 import CalendarView from '../components/CalendarView';
+import { IconSearch } from '../components/icons';
 
 export default function HistoryPage() {
   const [entries, setEntries] = useState<MealEntry[]>([]);
@@ -78,13 +79,18 @@ export default function HistoryPage() {
       {view === 'list' && (<>
       {/* 検索・絞り込み */}
       <div className="card">
-        <input
-          data-testid="history-search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="🔍 食品名・メモで検索"
-          style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--input-bg)', color: 'var(--text)' }}
-        />
+        <div style={{ position: 'relative' }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', display: 'flex', pointerEvents: 'none' }}>
+            <IconSearch />
+          </span>
+          <input
+            data-testid="history-search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="食品名・メモで検索"
+            style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--input-bg)', color: 'var(--text)' }}
+          />
+        </div>
         {allTags.length > 0 && (
           <div className="tag-input" style={{ marginTop: 10 }}>
             {allTags.map((t) => (

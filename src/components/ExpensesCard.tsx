@@ -6,6 +6,7 @@ import { DEFAULT_EXPENSE_CATEGORIES, PAYMENT_METHODS } from '../lib/types';
 import { parseNum } from '../lib/nutrition';
 import { useReload } from '../lib/useReload';
 import { useToast } from '../context/ToastContext';
+import { IconWallet, IconTrash } from './icons';
 
 export default function ExpensesCard({ date }: { date: string }) {
   const { user } = useAuth();
@@ -45,7 +46,7 @@ export default function ExpensesCard({ date }: { date: string }) {
   return (
     <div className="card">
       <div className="section-title">
-        <h2>💰 家計簿 <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>合計 ¥{total.toLocaleString()}</span></h2>
+        <h2><IconWallet /> 家計簿 <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>合計 ¥{total.toLocaleString()}</span></h2>
         <button className="btn small outline" data-testid="add-expense" onClick={() => { setEditing(null); setFormOpen(true); }}>＋ 追加</button>
       </div>
       {err && <div className="error-box">{err}</div>}
@@ -57,11 +58,11 @@ export default function ExpensesCard({ date }: { date: string }) {
           <div className="entry" key={e.id}>
             <button type="button" className="main entry-main" onClick={() => { setEditing(e); setFormOpen(true); }}>
               <div className="name">{e.category} <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>{e.payment_method ?? ''}</span></div>
-              {e.memo && <div className="sub">📝 {e.memo}</div>}
+              {e.memo && <div className="sub">{e.memo}</div>}
             </button>
             <div style={{ textAlign: 'right' }}>
               <div className="kcal" style={{ color: 'var(--text)' }}>¥{e.amount.toLocaleString()}</div>
-              <button className="btn ghost small" onClick={() => del(e.id)} aria-label="削除">🗑</button>
+              <button className="btn ghost small" onClick={() => del(e.id)} aria-label="削除"><IconTrash /></button>
             </div>
           </div>
         ))

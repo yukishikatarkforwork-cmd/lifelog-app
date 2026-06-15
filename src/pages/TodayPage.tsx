@@ -13,6 +13,7 @@ import MealEntryForm from '../components/MealEntryForm';
 import ConditionCard from '../components/ConditionCard';
 import WeatherCard from '../components/WeatherCard';
 import ExpensesCard from '../components/ExpensesCard';
+import { IconCalendar, IconMeals, IconTrash } from '../components/icons';
 
 const entryToInput = (e: MealEntry): MealEntryInput => ({
   meal_type: e.meal_type,
@@ -147,7 +148,7 @@ export default function TodayPage() {
       <div className="date-nav">
         <button onClick={() => goToDate(addDays(date, -1))} aria-label="前日">‹</button>
         <label className="date-jump" title="タップで日付を選択">
-          <span className="label">📅 {formatDisplay(date)}</span>
+          <span className="label"><IconCalendar size={15} /> {formatDisplay(date)}</span>
           <input
             type="date"
             aria-label="日付を選択"
@@ -169,7 +170,7 @@ export default function TodayPage() {
       <ConditionCard date={date} />
       <WeatherCard date={date} />
 
-      <div className="section-title" style={{ marginTop: 4 }}><h2>🍽️ 食事</h2></div>
+      <div className="section-title" style={{ marginTop: 4 }}><h2><IconMeals /> 食事</h2></div>
       <DayTotals total={total} goals={goals} />
 
       {!loading && entries.length === 0 && autoItemCount > 0 && (
@@ -202,14 +203,14 @@ export default function TodayPage() {
                         {e.amount ? `${e.amount}・` : ''}
                         P {fmt(e.protein ?? 0)} / F {fmt(e.fat ?? 0)} / C {fmt(e.carbohydrate ?? 0)} g
                       </div>
-                      {e.memo && <div className="sub">📝 {e.memo}</div>}
+                      {e.memo && <div className="sub">{e.memo}</div>}
                       {e.tags?.length > 0 && (
                         <div>{e.tags.map((t) => <span className="tag" key={t}>{t}</span>)}</div>
                       )}
                     </button>
                     <div style={{ textAlign: 'right' }}>
                       <div className="kcal">{fmt(e.calories ?? 0)}</div>
-                      <button className="btn ghost small" onClick={() => deleteEntry(e.id)} aria-label="削除">🗑</button>
+                      <button className="btn ghost small" onClick={() => deleteEntry(e.id)} aria-label="削除"><IconTrash /></button>
                     </div>
                   </div>
                 ))

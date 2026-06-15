@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import type { DailyRecord } from '../lib/types';
 import { parseNum } from '../lib/nutrition';
 import { useReload } from '../lib/useReload';
+import { IconHealth } from './icons';
 
 function ScoreSelector({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
   return (
@@ -72,7 +73,7 @@ export default function ConditionCard({ date }: { date: string }) {
 
   return (
     <div className="card">
-      <div className="section-title"><h2>🩺 体調</h2></div>
+      <div className="section-title"><h2><IconHealth /> 体調</h2></div>
       {err && <div className="error-box">{err}</div>}
 
       <div className="field">

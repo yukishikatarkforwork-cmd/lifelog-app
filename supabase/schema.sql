@@ -641,6 +641,9 @@ as $$
   );
 $$;
 
+-- 未ログイン（anon）には実行させない。auth.uid() が null なら常に false を返すので
+-- 実害はないが、他の security definer 関数（consume_ai_quota / accept_share）と扱いを揃える。
+revoke execute on function public.can_view(uuid, text, date) from public, anon;
 grant execute on function public.can_view(uuid, text, date) to authenticated;
 
 -- 閲覧用のポリシーを各テーブルに足す。

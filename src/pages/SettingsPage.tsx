@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { parseNum } from '../lib/nutrition';
 import type { ExpenseCategory, UserSettings } from '../lib/types';
 import { DEFAULT_EXPENSE_CATEGORIES } from '../lib/types';
+import { reindex } from '../lib/ai';
+import { insertSampleData, sampleDates } from '../lib/sampleData';
 
 export default function SettingsPage() {
   const { user, signOut } = useAuth();
@@ -21,6 +23,10 @@ export default function SettingsPage() {
   // 支出カテゴリ（ユーザー追加分）
   const [customCats, setCustomCats] = useState<ExpenseCategory[]>([]);
   const [newCat, setNewCat] = useState('');
+
+  // AI 検索インデックス
+  const [indexing, setIndexing] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
   const loadCats = async () => {
     const { data } = await supabase.from('expense_categories').select('*').order('created_at');
@@ -94,6 +100,49 @@ export default function SettingsPage() {
     setMsg('すべてのデータを削除しました。');
   };
 
+  const runReindex = async () => {
+    setIndexing(true);
+    setMsg('');
+    setErr('');
+    try {
+      const r = await reindex();
+      setMsg(
+        r.indexed === 0 && r.deleted === 0
+          ? `インデックスは最新です（${r.skipped} 件を確認）。`
+          : `インデックスを更新しました（新規・更新 ${r.indexed} 件 / 削除 ${r.deleted} 件 / 変更なし ${r.skipped} 件）。`,
+      );
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'インデックスの更新に失敗しました');
+    } finally {
+      setIndexing(false);
+    }
+  };
+
+  const runSeed = async () => {
+    if (!user) return;
+    if (!confirm(
+      'サンプルの記録を投入します。\n\n'
+      + '・同じ日付の体調・天気・日記がある場合は上書きされます\n'
+      + '・食事と支出は追加されます（重複投入に注意）\n\n'
+      + '実行しますか？',
+    )) return;
+
+    setSeeding(true);
+    setMsg('');
+    setErr('');
+    try {
+      const r = await insertSampleData(user.id);
+      setMsg(`サンプルを投入しました（${r.days} 日分 / 日記 ${r.diaries} 件 / 食事 ${r.meals} 件 / 支出 ${r.expenses} 件）。続けて検索インデックスを作成しています…`);
+      // 投入した日だけインデックスを作れば十分
+      const idx = await reindex({ dates: sampleDates() });
+      setMsg(`サンプルを投入し、検索インデックスを作成しました（${idx.indexed} 件）。「AI」タブの全期間モードや「似た日を探す」を試せます。`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'サンプルの投入に失敗しました');
+    } finally {
+      setSeeding(false);
+    }
+  };
+
   return (
     <div className="page">
       <h2 style={{ marginTop: 0 }}>設定</h2>
@@ -133,6 +182,27 @@ export default function SettingsPage() {
         <h2>データ出力</h2>
         <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>食事記録を CSV / Markdown で書き出します（AI 分析・表計算向け）。</p>
         <Link to="/export" className="btn outline full" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>出力画面を開く</Link>
+      </div>
+
+      <div className="card">
+        <h2>AI 検索インデックス</h2>
+        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+          「AI」タブの全期間モードと「似た日を探す」で使う索引です。日記を保存すると自動で更新されますが、
+          反映されていないと感じたときや、他の記録（体調・食事・支出）をまとめて変更したあとに作り直してください。
+        </p>
+        <button data-testid="reindex" className="btn outline full" onClick={runReindex} disabled={indexing}>
+          {indexing ? '更新中…' : 'インデックスを作り直す'}
+        </button>
+      </div>
+
+      <div className="card">
+        <h2>動作確認用</h2>
+        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+          記録がまだ少ないうちに AI 機能を試すためのサンプルです。直近120日に約24日分の日記・体調・天気・食事・支出を作ります。
+        </p>
+        <button data-testid="seed-sample" className="btn outline full" onClick={runSeed} disabled={seeding}>
+          {seeding ? '投入中…' : 'サンプル記録を投入する'}
+        </button>
       </div>
 
       <div className="card">

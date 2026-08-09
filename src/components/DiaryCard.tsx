@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import type { DiaryEntry } from '../lib/types';
 import { DIARY_TAG_SUGGESTIONS } from '../lib/types';
 import { useReload } from '../lib/useReload';
+import { reindexInBackground } from '../lib/ai';
 import TagEditor from './TagEditor';
 import { IconDiary, IconTrash } from './icons';
 
@@ -46,6 +47,8 @@ export default function DiaryCard({ date }: { date: string }) {
     setExists(true);
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
+    // 検索インデックスを追従させる（失敗しても日記自体は保存済みなので待たない）
+    reindexInBackground([date]);
   };
 
   const remove = async () => {
@@ -53,6 +56,7 @@ export default function DiaryCard({ date }: { date: string }) {
     const { error } = await supabase.from('diary_entries').delete().eq('date', date);
     if (error) { setErr(error.message); return; }
     await reload();
+    reindexInBackground([date]);
   };
 
   // タイトルだけ・タグだけの保存は実質空の日記になるので本文を必須にする

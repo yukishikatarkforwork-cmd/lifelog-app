@@ -3,38 +3,50 @@ import { supabase, supabaseUrl } from '../lib/supabase';
 import { addDays, todayStr } from '../lib/date';
 import { IconAsk } from '../components/icons';
 
-/** 期間のプリセット。日数で持ち、送信時に開始日へ変換する */
-const RANGES = [
-  { label: '直近7日', days: 7 },
-  { label: '直近30日', days: 30 },
-  { label: '直近90日', days: 90 },
-  { label: '直近1年', days: 365 },
+/**
+ * 期間のプリセット。days=null は「全期間（AI検索）」で、
+ * サーバー側がベクトル検索に切り替わる（期間を選ばずに聞ける）。
+ */
+const RANGES: Array<{ label: string; days: number | null }> = [
+  { label: '7日', days: 7 },
+  { label: '30日', days: 30 },
+  { label: '90日', days: 90 },
+  { label: '1年', days: 365 },
+  { label: '全期間', days: null },
 ];
 
-const PRESET_QUESTIONS = [
-  '最近の体調の傾向を教えて。良い日と悪い日で何が違う？',
-  '気圧や天気と体調の関係はある？',
-  '食事のPFCバランスの問題点と、改善案を3つ教えて。',
-  '支出で削れそうなところはどこ？',
-  '睡眠時間は足りている？体調とどう関係している？',
-  '日記から、この期間で印象に残っている出来事をまとめて。',
+/**
+ * プリセット質問。向いているモードを持たせ、押されたら期間も一緒に切り替える。
+ * 「いつだっけ」系を30日モードのまま投げても見つからないため。
+ */
+const PRESET_QUESTIONS: Array<{ text: string; days: number | null }> = [
+  { text: '海の近くに行ったのはいつ？', days: null },
+  { text: '体調が一番悪かった日は何があった？', days: null },
+  { text: '外食した日をまとめて教えて', days: null },
+  { text: '最近の体調の傾向を教えて。良い日と悪い日で何が違う？', days: 30 },
+  { text: '気圧や天気と体調の関係はある？', days: 90 },
+  { text: '食事のPFCバランスの問題点と、改善案を3つ教えて。', days: 30 },
+  { text: '支出で削れそうなところはどこ？', days: 30 },
+  { text: '睡眠時間は足りている？体調とどう関係している？', days: 90 },
 ];
 
 export default function AskPage() {
-  const [days, setDays] = useState(30);
+  const [days, setDays] = useState<number | null>(30);
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [thinking, setThinking] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
   const [usage, setUsage] = useState('');
+  const [mode, setMode] = useState('');
   const abortRef = useRef<AbortController | null>(null);
 
   const stop = () => abortRef.current?.abort();
 
-  const ask = async (q: string) => {
+  const ask = async (q: string, overrideDays?: number | null) => {
     const text = q.trim();
     if (!text || running) return;
+    const range = overrideDays !== undefined ? overrideDays : days;
 
     setError('');
     setAnswer('');
@@ -48,8 +60,11 @@ export default function AskPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { setError('ログインが必要です。'); return; }
 
+      // 全期間モードでは期間を送らない。サーバー側がベクトル検索に切り替わる
       const end = todayStr();
-      const start = addDays(end, -(days - 1));
+      const payload = range === null
+        ? { question: text, scope: 'all' }
+        : { question: text, start: addDays(end, -(range - 1)), end };
 
       const res = await fetch(`${supabaseUrl}/functions/v1/ask-ai`, {
         method: 'POST',
@@ -57,7 +72,7 @@ export default function AskPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ question: text, start, end }),
+        body: JSON.stringify(payload),
         signal: controller.signal,
       });
 
@@ -69,6 +84,7 @@ export default function AskPage() {
       }
 
       setUsage(res.headers.get('X-Ai-Usage') ?? '');
+      setMode(res.headers.get('X-Ai-Mode') ?? '');
 
       const reader = res.body?.getReader();
       if (!reader) { setError('回答を受け取れませんでした。'); return; }
@@ -96,7 +112,8 @@ export default function AskPage() {
     <div className="page">
       <h2 style={{ marginTop: 0 }}><IconAsk size={18} /> AI に聞く</h2>
       <p className="muted" style={{ fontSize: 13, marginTop: -4 }}>
-        選んだ期間の記録（体調・天気気圧・食事・家計簿・日記）をもとに回答します。
+        自分の記録（体調・天気気圧・食事・家計簿・日記）をもとに回答します。
+        数値は SQL で集計した確定値を使うので、平均や合計は正確です。
       </p>
 
       <div className="card">
@@ -105,7 +122,7 @@ export default function AskPage() {
           <div className="tabs">
             {RANGES.map((r) => (
               <button
-                key={r.days}
+                key={r.label}
                 className={days === r.days ? 'active' : ''}
                 onClick={() => setDays(r.days)}
                 disabled={running}
@@ -113,6 +130,11 @@ export default function AskPage() {
                 {r.label}
               </button>
             ))}
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+            {days === null
+              ? '記録全体から質問に関係する日を検索して答えます。「いつだっけ？」のように時期が分からない質問に向いています。'
+              : 'この期間の記録をすべて見て答えます。「傾向は？」のように網羅性が要る質問に向いています。'}
           </div>
         </div>
 
@@ -122,7 +144,7 @@ export default function AskPage() {
             data-testid="ask-input"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="例: 先月の平均体調は？ / 江ノ島に行ったのはいつ？"
+            placeholder={days === null ? '例: 江ノ島に行ったのはいつ？' : '例: 最近の体調の傾向は？'}
             style={{ minHeight: 90 }}
           />
         </div>
@@ -142,24 +164,29 @@ export default function AskPage() {
         </div>
         {usage && (
           <div className="muted" style={{ fontSize: 12, marginTop: 8, textAlign: 'right' }}>
-            本日の利用: {usage}
+            {mode === 'search' && '検索モード ・ '}本日の利用: {usage}
           </div>
         )}
       </div>
 
       <div className="card">
         <h2>よくある質問</h2>
+        <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+          🔍 は全期間の検索モードで実行します（期間は自動で切り替わります）。
+        </p>
         <div className="tag-input">
           {PRESET_QUESTIONS.map((q) => (
             <button
-              key={q}
+              key={q.text}
               type="button"
               className="tag"
               style={{ cursor: 'pointer', border: '1px solid var(--border)', textAlign: 'left' }}
               disabled={running}
-              onClick={() => { setQuestion(q); void ask(q); }}
+              // 質問に合う期間へ自動で切り替える（切り替えの反映を待たず引数でも渡す）
+              onClick={() => { setQuestion(q.text); setDays(q.days); void ask(q.text, q.days); }}
             >
-              {q}
+              {q.days === null && <span className="muted" style={{ marginRight: 4 }}>🔍</span>}
+              {q.text}
             </button>
           ))}
         </div>

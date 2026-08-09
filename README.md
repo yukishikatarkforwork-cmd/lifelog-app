@@ -57,11 +57,19 @@
 - **統合 Markdown に同梱**：出力した Markdown に日記の全文が含まれる
 
 **Phase 10（AI に聞く）**
-- **アプリ内 AI 質問**：期間（7日/30日/90日/1年）を選び、自分の記録について自然文で質問できる
+- **アプリ内 AI 質問**：期間（7日/30日/90日/1年/全期間）を選び、自分の記録について自然文で質問できる
 - **プリセット質問**：「気圧と体調の関係は？」「支出で削れそうなところは？」などをワンタップで
 - **ストリーミング表示**：回答が届いた順に表示。中断も可能
 - **API キーはサーバー側**：Supabase Edge Function を経由するため、キーはブラウザに出ない
 - **利用回数制限**：1ユーザーあたり 1日 20回（コスト暴走の防止）
+
+**Phase 11（ベクトル検索 / RAG）**
+- **全期間モード**：期間を指定せず「江ノ島に行ったのはいつ？」と聞ける。質問をベクトル化して関連する日だけ拾うため、**記録が何年ぶんあってもコストが増えない**
+- **表記ゆれに強い**：日記に「稲村ヶ崎」と書いてあれば「海」で検索してもヒットする
+- **似た日を探す**：体調・天気・食事・日記をまとめて見て、その日と近い過去の日を提示（`/` 今日画面）
+- **集計はSQL側で確定**：平均・合計・相関は `lifelog_stats()` が計算するので、検索で拾った分から数え直して間違えることがない
+- **索引の自動追従**：日記を保存・削除すると該当日の索引を作り直す。ずれた場合は設定画面から全件再作成できる
+- **サンプル記録の投入**：記録が少ないうちに動作を試せるよう、約24日分のサンプルを設定画面から入れられる
 
 ## 技術スタック
 
@@ -72,6 +80,7 @@
 | グラフ | recharts |
 | バックエンド | Supabase（Auth / PostgreSQL / RLS / Edge Functions） |
 | AI | Claude API（`claude-opus-5`）を Supabase Edge Function 経由で利用 |
+| ベクトル検索 | pgvector（Supabase 標準）+ OpenAI `text-embedding-3-small`（512次元） |
 
 ---
 
@@ -115,7 +124,10 @@ VITE_SUPABASE_ANON_KEY=eyJhbGci...
 
 この機能だけ Supabase Edge Function を使う。**設定しなくてもアプリの他の機能は動く**（AI 画面だけがエラーになる）。
 
-1. <https://console.anthropic.com> で API キーを発行する
+1. API キーを発行する
+   - <https://console.anthropic.com> … 回答生成用（必須）
+   - <https://platform.openai.com> … 埋め込み生成用（全期間検索と「似た日」を使う場合のみ）
+
 2. Supabase CLI をインストールし、プロジェクトにリンクする
 
    ```bash
@@ -128,6 +140,7 @@ VITE_SUPABASE_ANON_KEY=eyJhbGci...
 
    ```bash
    supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+   supabase secrets set OPENAI_API_KEY=sk-...      # ベクトル検索を使う場合
    ```
 
    > ⚠️ **`.env` の `VITE_` 変数には絶対に入れないこと。** `VITE_` 接頭辞の値はビルド結果に埋め込まれ、
@@ -137,9 +150,17 @@ VITE_SUPABASE_ANON_KEY=eyJhbGci...
 
    ```bash
    supabase functions deploy ask-ai
+   supabase functions deploy reindex
    ```
 
+5. アプリの **設定** 画面を開き、必要に応じて次を実行する
+   - **サンプル記録を投入する** … 記録がまだ無い状態で AI 機能を試したいとき
+   - **インデックスを作り直す** … 既に記録がある状態から検索を有効にするとき
+
 `SUPABASE_URL` と `SUPABASE_ANON_KEY` は Edge Function の実行環境に自動で入るため、設定は不要。
+
+> 💡 **埋め込みプロバイダの差し替え**：`supabase/functions/_shared/embedding.ts` の `embed()` だけを
+> 書き換えれば、Voyage AI などに変更できる。次元数を変える場合は `schema.sql` の `vector(512)` も合わせること。
 
 **コストのつまみ**（[`supabase/functions/ask-ai/index.ts`](supabase/functions/ask-ai/index.ts) の先頭）:
 
@@ -149,6 +170,8 @@ VITE_SUPABASE_ANON_KEY=eyJhbGci...
 | `MAX_RANGE_DAYS` | 400 | 1回で扱える最大日数 |
 | `COMPACT_THRESHOLD_DAYS` | 120 | これを超える期間は構造化データを1日1行に圧縮（日記は常に全文） |
 | `output_config.effort` | `high` | 回答の作り込み度。`medium` / `low` に下げるとコストと待ち時間が減る |
+| `TOP_DIARY_CHUNKS` | 24 | 全期間モードで拾う日記チャンク数 |
+| `TOP_DAYS` | 12 | 全期間モードで拾う日別要約の数 |
 
 ### 5. 開発サーバー起動
 
@@ -181,7 +204,8 @@ npm run test:watch # 監視モード
 ```
 
 対象: [`src/lib/nutrition.test.ts`](src/lib/nutrition.test.ts) / [`src/lib/date.test.ts`](src/lib/date.test.ts) /
-[`src/lib/analysis.test.ts`](src/lib/analysis.test.ts) / [`src/lib/export.test.ts`](src/lib/export.test.ts)（日記の Markdown 出力を含む）
+[`src/lib/analysis.test.ts`](src/lib/analysis.test.ts) / [`src/lib/export.test.ts`](src/lib/export.test.ts)（日記の Markdown 出力）/
+[`src/lib/chunk.test.ts`](src/lib/chunk.test.ts)（日記の分割とサンプル日付）
 
 ### E2E テスト（Playwright）
 
@@ -204,6 +228,42 @@ npx playwright test --ui    # UI モードで対話的に実行
 
 ---
 
+## AI 検索のしくみ
+
+質問の経路は3本あり、**どれを使うかは選んだ期間で決まる**（質問を分類する仕組みは置いていない。
+分類を間違えたときに黙って精度が落ちるため）。
+
+```
+質問
+ ├─ 集計・統計 ─────────→ lifelog_stats() で SQL 集計   … どのモードでも必ず渡す
+ ├─ 期間が短い（〜1ヶ月）─→ その期間を全文投入            … 「傾向は？」など網羅性が要る質問
+ └─ 全期間モード ────────→ pgvector で意味検索           … 「いつだっけ？」など時期が不明な質問
+```
+
+**なぜ全部をベクトル検索にしないか**：ベクトル検索は「平均」を計算できない。
+「先月の平均体調は？」を検索で拾った数日から答えると間違える。数値は SQL 側で確定させる。
+
+**なぜ全部を全文投入にしないか**：期間に比例してコストが増える。
+1年分だと1回あたり約 $0.35 かかるが、ベクトル検索なら期間によらず約 $0.035 で済む。
+
+**なぜ短期間は全文投入のままなのか**：30日ぶんは約9Kトークン、ベクトル検索は約7Kトークンで、
+**コストがほぼ変わらない**。それなら取りこぼしのない全文投入のほうがよい。
+上位N件を拾う方式は、網羅性が必要な質問では必ず何かを落とす。
+
+埋め込みは2種類を使い分けている（1本のベクトルでは兼用できない）。
+
+| kind | 埋め込む単位 | 用途 |
+|---|---|---|
+| `diary` | 日記本文を数百字ごとに分割したチャンク | 「あのカフェの日はいつ？」 |
+| `day` | 1日ぶんの記録をまとめた要約1行 | 「今日と似た日は？」 |
+
+索引の更新は「あるべき姿」と「今ある索引」を突き合わせて差分だけ埋める方式にしている。
+DBトリガにしなかったのは、日別要約が体調・天気・食事・支出・日記のどれが変わっても
+作り直しになり、トリガを張る箇所が5つに散るため。差分方式なら呼ばれ方によらず整合し、
+取りこぼしても次回の実行で自己修復する。
+
+---
+
 ## データモデル
 
 すべて `user_id` に紐づき RLS で分離し、**日付単位**で設計している。
@@ -222,6 +282,17 @@ npx playwright test --ui    # UI モードで対話的に実行
 - `expense_categories` — ユーザー追加の支出カテゴリ
 - `diary_entries` — 日記（user×date、title/body/tags）。体調メモとは別テーブル
 - `ai_usage` — 「AI に聞く」の1日あたり利用回数（加算は `consume_ai_quota()` 関数経由のみ）
+- `embeddings` — ベクトル検索の索引。`kind='diary'`（日記本文のチャンク）と `kind='day'`（1日ぶんの要約）を同居させる
+
+主な SQL 関数:
+
+| 関数 | 役割 |
+|---|---|
+| `lifelog_stats(start, end)` | 平均・合計・カテゴリ別・相関を **SQL 側で確定** させる。行を取り寄せて数えると PostgREST の1000行制限で件数が欠けるため、集計は必ずここを通す |
+| `match_embeddings(vec, kind, n)` | 質問ベクトルに近い記録を返す（全期間モード） |
+| `similar_days(date, n)` | 指定日と似た日を返す。DB内で完結するので埋め込みAPIを呼ばない |
+| `lifelog_dates(limit)` | 記録のある日付を列挙する（再インデックスの対象決め） |
+| `consume_ai_quota()` | AI 利用回数を1つ進めて累計を返す（`security definer`、`auth.uid()` 固定） |
 
 詳細は [`supabase/schema.sql`](supabase/schema.sql) を参照。
 
@@ -239,6 +310,7 @@ npx playwright test --ui    # UI モードで対話的に実行
 | **Phase 6** | 統合ダッシュボード・CSV/Markdown 出力 | ✅ 完了 |
 | **Phase 7** | 日記（本文・タグ・検索・カレンダー連携・Markdown 同梱） | ✅ 完了 |
 | **Phase 10** | AI に聞く（Edge Function + Claude API、ストリーミング） | ✅ 完了 |
+| **Phase 11** | ベクトル検索（pgvector・全期間モード・似た日・SQL集計との併用） | ✅ 完了 |
 | **Phase 8** | 写真（Supabase Storage・クライアント側圧縮・日記/食事/レシートに添付） | ⬜ 未着手 |
 | **Phase 9** | カレンダー共有（ユーザー間招待・共有範囲の指定・読み取り専用） | ⬜ 未着手 |
 

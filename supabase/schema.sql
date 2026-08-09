@@ -302,3 +302,204 @@ $$;
 
 revoke execute on function public.consume_ai_quota() from public, anon;
 grant execute on function public.consume_ai_quota() to authenticated;
+
+-- =====================================================================
+-- Phase 11: ベクトル検索（RAG）の土台
+--
+-- 「江ノ島に行ったのはいつ？」のように、期間を指定せず意味で探すための仕組み。
+-- 集計（平均・合計・相関）は下の lifelog_stats() が担当し、こちらはテキスト検索専用。
+-- 役割を分けているのは、ベクトル検索が「平均」を計算できないため。
+-- =====================================================================
+create extension if not exists vector;
+
+-- 埋め込みの保管庫。kind で2種類を同居させる。
+--   diary : 日記本文のチャンク       → 「あのカフェの日はいつ？」に答える
+--   day   : 1日ぶんの記録の要約1行   → 「今日と似た日は？」に答える
+-- 埋め込む単位が違うので1本のベクトルでは兼用できない。
+create table if not exists public.embeddings (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references auth.users (id) on delete cascade,
+  kind         text not null check (kind in ('diary', 'day')),
+  date         date not null,
+  chunk_index  integer not null default 0,
+  content      text not null,          -- 埋め込んだ元テキスト（回答の根拠として提示する）
+  content_hash text not null,          -- 元テキストのハッシュ。再インデックス時の差分判定に使う
+  embedding    vector(512),
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  unique (user_id, kind, date, chunk_index)
+);
+
+create index if not exists embeddings_user_kind_idx on public.embeddings (user_id, kind, date);
+-- 近傍検索用。コサイン距離（<=>）で引く
+create index if not exists embeddings_vec_idx
+  on public.embeddings using hnsw (embedding vector_cosine_ops);
+
+drop trigger if exists trg_embeddings_updated on public.embeddings;
+create trigger trg_embeddings_updated before update on public.embeddings
+  for each row execute function public.set_updated_at();
+
+alter table public.embeddings enable row level security;
+
+drop policy if exists "own embeddings" on public.embeddings;
+create policy "own embeddings" on public.embeddings
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+grant select, insert, update, delete on public.embeddings to authenticated;
+
+-- 近傍検索。supabase-js からは <=> 演算子を書けないので関数にする。
+-- security invoker（既定）なので RLS がかかり、他人の埋め込みは引けない。
+create or replace function public.match_embeddings(
+  query_embedding vector(512),
+  match_kind      text,
+  match_count     integer default 20,
+  exclude_date    date default null
+)
+returns table (date date, chunk_index integer, content text, similarity double precision)
+language sql
+stable
+as $$
+  select e.date, e.chunk_index, e.content,
+         1 - (e.embedding <=> query_embedding) as similarity
+  from public.embeddings e
+  where e.user_id = auth.uid()
+    and e.kind = match_kind
+    and e.embedding is not null
+    and (exclude_date is null or e.date <> exclude_date)
+  order by e.embedding <=> query_embedding
+  limit greatest(1, least(match_count, 100));
+$$;
+
+grant execute on function public.match_embeddings(vector, text, integer, date) to authenticated;
+
+-- =====================================================================
+-- 集計は SQL 側で確定させる。
+-- PostgREST は1リクエスト1000行で打ち切られるため、行を取り寄せて数えると
+-- 長期間で件数が欠けて平均が狂う。集計は必ずこの関数を通す。
+-- =====================================================================
+create or replace function public.lifelog_stats(p_start date, p_end date)
+returns json
+language sql
+stable
+as $$
+  with
+  cond as (
+    select * from public.daily_records
+    where user_id = auth.uid() and date between p_start and p_end
+  ),
+  wth as (
+    select * from public.weather_records
+    where user_id = auth.uid() and date between p_start and p_end
+  ),
+  meal_day as (
+    select date,
+           sum(coalesce(calories, 0))     as kcal,
+           sum(coalesce(protein, 0))      as p,
+           sum(coalesce(fat, 0))          as f,
+           sum(coalesce(carbohydrate, 0)) as c
+    from public.meal_entries
+    where user_id = auth.uid() and date between p_start and p_end
+    group by date
+  ),
+  meal_count as (
+    select count(*) as n from public.meal_entries
+    where user_id = auth.uid() and date between p_start and p_end
+  ),
+  exp as (
+    select * from public.expenses
+    where user_id = auth.uid() and date between p_start and p_end
+  ),
+  exp_cat as (
+    select category, sum(amount) as total, count(*) as n
+    from exp group by category order by sum(amount) desc
+  ),
+  diary as (
+    select count(*) as n from public.diary_entries
+    where user_id = auth.uid() and date between p_start and p_end
+  ),
+  -- corr(Y, X) がピアソン相関係数。2点未満や分散0なら null が返る
+  corr_pressure as (
+    select corr(c.condition_score, w.pressure_hpa) as r, count(*) as n
+    from cond c join wth w on w.date = c.date
+    where c.condition_score is not null and w.pressure_hpa is not null
+  ),
+  corr_sleep as (
+    select corr(condition_score, sleep_hours) as r, count(*) as n
+    from cond where condition_score is not null and sleep_hours is not null
+  )
+  select json_build_object(
+    'period', json_build_object('start', p_start, 'end', p_end),
+    'condition', (select json_build_object(
+        'days',           count(*) filter (where condition_score is not null),
+        'avg_condition',  avg(condition_score),
+        'avg_mood',       avg(mood_score),
+        'avg_sleep',      avg(sleep_hours),
+        'headache_days',  count(*) filter (where headache),
+        'medication_days',count(*) filter (where medication)
+      ) from cond),
+    'meals', (select json_build_object(
+        'days',      (select count(*) from meal_day),
+        'items',     (select n from meal_count),
+        'avg_kcal',  avg(kcal), 'avg_p', avg(p), 'avg_f', avg(f), 'avg_c', avg(c)
+      ) from meal_day),
+    'expenses', json_build_object(
+        'total',      (select coalesce(sum(amount), 0) from exp),
+        'count',      (select count(*) from exp),
+        'days',       (select count(distinct date) from exp),
+        'by_category',(select coalesce(json_agg(json_build_object(
+                          'category', category, 'total', total, 'count', n)), '[]'::json) from exp_cat)
+      ),
+    'diary_count', (select n from diary),
+    'correlation', json_build_object(
+        'pressure_condition', json_build_object('r', (select r from corr_pressure), 'n', (select n from corr_pressure)),
+        'sleep_condition',    json_build_object('r', (select r from corr_sleep),    'n', (select n from corr_sleep))
+      )
+  );
+$$;
+
+grant execute on function public.lifelog_stats(date, date) to authenticated;
+
+-- 記録のある日付を新しい順に返す（埋め込みの対象日を列挙するため。1000行制限を避ける）
+create or replace function public.lifelog_dates(p_limit integer default 2000)
+returns table (date date)
+language sql
+stable
+as $$
+  select d from (
+    select date as d from public.daily_records  where user_id = auth.uid()
+    union select date from public.weather_records where user_id = auth.uid()
+    union select date from public.meal_entries   where user_id = auth.uid()
+    union select date from public.expenses       where user_id = auth.uid()
+    union select date from public.diary_entries  where user_id = auth.uid()
+  ) t
+  order by d desc
+  limit greatest(1, least(p_limit, 5000));
+$$;
+
+grant execute on function public.lifelog_dates(integer) to authenticated;
+
+-- 「この日と似た日」を返す。
+-- 基準日の要約ベクトルをDB内で引いてそのまま近傍検索するので、
+-- 埋め込みAPIの呼び出しもベクトルの往復も不要（クライアントから直接呼べる）。
+create or replace function public.similar_days(p_date date, match_count integer default 10)
+returns table (date date, content text, similarity double precision)
+language sql
+stable
+as $$
+  with src as (
+    select e.embedding
+    from public.embeddings e
+    where e.user_id = auth.uid() and e.kind = 'day' and e.date = p_date and e.embedding is not null
+    limit 1
+  )
+  select e.date, e.content, 1 - (e.embedding <=> src.embedding) as similarity
+  from public.embeddings e, src
+  where e.user_id = auth.uid()
+    and e.kind = 'day'
+    and e.date <> p_date
+    and e.embedding is not null
+  order by e.embedding <=> src.embedding
+  limit greatest(1, least(match_count, 50));
+$$;
+
+grant execute on function public.similar_days(date, integer) to authenticated;

@@ -124,6 +124,9 @@ input, select, textarea {
   transition: color 0.15s ease, background 0.15s ease;
 }
 .bottom-nav a .icon { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; }
+/* 項目数が増えてもラベルが折り返さないようにする（狭い端末では少し縮める） */
+.bottom-nav a > span:last-child { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+@media (max-width: 380px) { .bottom-nav a { font-size: 10px; } }
 .bottom-nav a.active { color: var(--primary); font-weight: 600; }
 .bottom-nav a:active { background: var(--fill); }
 

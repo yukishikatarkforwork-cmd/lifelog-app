@@ -226,3 +226,79 @@ grant select, insert, update, delete on public.daily_records      to authenticat
 grant select, insert, update, delete on public.weather_records    to authenticated;
 grant select, insert, update, delete on public.expenses           to authenticated;
 grant select, insert, update, delete on public.expense_categories to authenticated;
+
+-- =====================================================================
+-- Phase 7: 日記（user × date で1行。upsert）
+-- 体調メモ（daily_records.memo）とは別テーブルにする。
+-- 「日記だけ共有する／体調・家計簿は共有しない」を将来 RLS で表現できるようにするため、
+-- 共有の粒度になりうる単位でテーブルを分けておく。
+-- =====================================================================
+create table if not exists public.diary_entries (
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  date       date not null,
+  title      text,
+  body       text not null default '',
+  tags       text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, date)
+);
+
+drop trigger if exists trg_diary_entries_updated on public.diary_entries;
+create trigger trg_diary_entries_updated before update on public.diary_entries
+  for each row execute function public.set_updated_at();
+
+alter table public.diary_entries enable row level security;
+
+drop policy if exists "own diary_entries" on public.diary_entries;
+create policy "own diary_entries" on public.diary_entries
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+grant select, insert, update, delete on public.diary_entries to authenticated;
+
+-- =====================================================================
+-- Phase 10: 「AI に聞く」の利用回数制限
+-- Edge Function から呼ぶ。API コストが青天井にならないよう1日あたりの上限を設ける。
+-- =====================================================================
+create table if not exists public.ai_usage (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  date    date not null,
+  count   integer not null default 0,
+  primary key (user_id, date)
+);
+
+alter table public.ai_usage enable row level security;
+
+-- 残り回数の表示用に自分の分の参照だけ許可する。加算は下の関数経由のみ。
+drop policy if exists "own ai_usage read" on public.ai_usage;
+create policy "own ai_usage read" on public.ai_usage
+  for select to authenticated using (auth.uid() = user_id);
+
+grant select on public.ai_usage to authenticated;
+
+-- 利用回数を1つ進めて、その日の累計を返す。
+-- security definer だが user_id は auth.uid() から取るため、他人の枠は消費できない。
+create or replace function public.consume_ai_quota()
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count integer;
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+
+  insert into public.ai_usage as u (user_id, date, count)
+  values (auth.uid(), current_date, 1)
+  on conflict (user_id, date) do update set count = u.count + 1
+  returning u.count into v_count;
+
+  return v_count;
+end;
+$$;
+
+revoke execute on function public.consume_ai_quota() from public, anon;
+grant execute on function public.consume_ai_quota() to authenticated;

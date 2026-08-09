@@ -13,6 +13,7 @@ const GraphPage = lazy(() => import('./pages/GraphPage'));
 const TemplatesPage = lazy(() => import('./pages/TemplatesPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const ExportPage = lazy(() => import('./pages/ExportPage'));
+const AskPage = lazy(() => import('./pages/AskPage'));
 
 const Loading = () => <div className="spinner-wrap">読み込み中…</div>;
 
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/graph" element={<GraphPage />} />
           <Route path="/templates" element={<TemplatesPage />} />
+          <Route path="/ask" element={<AskPage />} />
           <Route path="/export" element={<ExportPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>

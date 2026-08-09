@@ -14,3 +14,6 @@ if (!isSupabaseConfigured) {
 
 // 未設定時もクライアント生成自体は通しておき、UI 側で設定案内を出す
 export const supabase = createClient(url ?? 'http://localhost', anonKey ?? 'public-anon-key');
+
+/** Edge Function を fetch で直接叩くために URL が必要（supabase-js の invoke はストリームを扱えない） */
+export const supabaseUrl = url ?? '';

@@ -1,4 +1,4 @@
-import type { DailyRecord, Expense, MealEntry, MealType, WeatherRecord } from './types';
+import type { DailyRecord, DiaryEntry, Expense, MealEntry, MealType, WeatherRecord } from './types';
 import { MEAL_LABELS, WEATHER_LABELS } from './types';
 import { fmt, sumNutrition } from './nutrition';
 import { formatShort } from './date';
@@ -85,6 +85,7 @@ export interface DailyExportData {
   conditions: DailyRecord[];
   weathers: WeatherRecord[];
   expenses: Expense[];
+  diaries?: DiaryEntry[];
 }
 
 /** 全ドメインを日別にまとめた統合 Markdown（AI 分析向け） */
@@ -95,8 +96,9 @@ export function toDailyMarkdown(data: DailyExportData, title = '生活記録'): 
   const wthBy = new Map(data.weathers.map((r) => [r.date, r]));
   const expBy = new Map<string, Expense[]>();
   for (const e of data.expenses) { const a = expBy.get(e.date) ?? []; a.push(e); expBy.set(e.date, a); }
+  const diaryBy = new Map((data.diaries ?? []).map((d) => [d.date, d]));
 
-  const dates = new Set<string>([...mealsBy.keys(), ...condBy.keys(), ...wthBy.keys(), ...expBy.keys()]);
+  const dates = new Set<string>([...mealsBy.keys(), ...condBy.keys(), ...wthBy.keys(), ...expBy.keys(), ...diaryBy.keys()]);
   const sorted = [...dates].sort();
 
   const lines: string[] = [`# ${title}`, ''];
@@ -149,6 +151,15 @@ export function toDailyMarkdown(data: DailyExportData, title = '生活記録'): 
       for (const e of exps) {
         lines.push(`- ${e.category} ¥${e.amount.toLocaleString()}${e.payment_method ? `（${e.payment_method}）` : ''}${e.memo ? ` ${e.memo.replace(/\n/g, ' ')}` : ''}`);
       }
+      lines.push('');
+    }
+
+    const d = diaryBy.get(date);
+    if (d && (d.body.trim() || d.title)) {
+      lines.push(`**日記**${d.title ? `: ${d.title}` : ''}`);
+      if (d.tags?.length > 0) lines.push(`タグ: ${d.tags.join(', ')}`);
+      // 本文は引用にして、日付見出しと本文中の記号が混ざらないようにする
+      for (const line of d.body.split('\n')) lines.push(`> ${line}`);
       lines.push('');
     }
   }

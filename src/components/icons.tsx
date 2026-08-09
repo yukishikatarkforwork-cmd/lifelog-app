@@ -44,3 +44,16 @@ export const IconSearch = ({ size = 15 }: P) => (
     <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
   </svg>
 );
+export const IconDiary = ({ size = 16 }: P) => (
+  <svg {...s(size)}>
+    <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/>
+    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
+    <line x1="9" y1="7" x2="16" y2="7"/><line x1="9" y1="11" x2="16" y2="11"/>
+  </svg>
+);
+export const IconAsk = ({ size = 16 }: P) => (
+  <svg {...s(size)}>
+    <path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/>
+    <path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9L18 15z"/>
+  </svg>
+);

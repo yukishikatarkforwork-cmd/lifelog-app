@@ -142,6 +142,23 @@ export interface WeatherRecord {
   updated_at?: string;
 }
 
+// ---------- Phase 7: 日記 ----------
+/** 日記（1日1件）。体調メモとは別に、その日の出来事を自由記述で残す */
+export interface DiaryEntry {
+  user_id: string;
+  date: string;
+  title: string | null;
+  body: string;
+  tags: string[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** 日記でよく使うタグの候補 */
+export const DIARY_TAG_SUGGESTIONS = [
+  '仕事', '家族', '友人', 'おでかけ', '旅行', '買い物', '運動', '読書', '嬉しい', 'しんどい',
+];
+
 // ---------- Phase 5: 家計簿 ----------
 export interface Expense {
   id: string;

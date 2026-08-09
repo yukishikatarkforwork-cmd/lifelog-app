@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import type { DailyRecord, Expense, MealEntry } from '../lib/types';
+import type { DailyRecord, DiaryEntry, Expense, MealEntry } from '../lib/types';
 import { toDateStr, todayStr } from '../lib/date';
+import { useReload } from '../lib/useReload';
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 // 体調スコア 1..5 の色（悪い→良い）
@@ -21,6 +22,7 @@ export default function CalendarView() {
   const [cond, setCond] = useState<Map<string, number | null>>(new Map());
   const [kcal, setKcal] = useState<Map<string, number>>(new Map());
   const [exp, setExp] = useState<Set<string>>(new Set());
+  const [diary, setDiary] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
   const monthStart = toDateStr(new Date(year, month, 1));
@@ -28,12 +30,13 @@ export default function CalendarView() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstWeekday = new Date(year, month, 1).getDay();
 
-  const load = useCallback(async () => {
+  useReload(async () => {
     setLoading(true);
-    const [c, m, e] = await Promise.all([
+    const [c, m, e, d] = await Promise.all([
       supabase.from('daily_records').select('date,condition_score').gte('date', monthStart).lte('date', monthEnd),
       supabase.from('meal_entries').select('date,calories').gte('date', monthStart).lte('date', monthEnd),
       supabase.from('expenses').select('date').gte('date', monthStart).lte('date', monthEnd),
+      supabase.from('diary_entries').select('date').gte('date', monthStart).lte('date', monthEnd),
     ]);
     const cMap = new Map<string, number | null>();
     for (const r of (c.data as DailyRecord[]) ?? []) cMap.set(r.date, r.condition_score);
@@ -43,11 +46,11 @@ export default function CalendarView() {
     }
     const eSet = new Set<string>();
     for (const r of (e.data as Pick<Expense, 'date'>[]) ?? []) eSet.add(r.date);
-    setCond(cMap); setKcal(kMap); setExp(eSet);
+    const dSet = new Set<string>();
+    for (const r of (d.data as Pick<DiaryEntry, 'date'>[]) ?? []) dSet.add(r.date);
+    setCond(cMap); setKcal(kMap); setExp(eSet); setDiary(dSet);
     setLoading(false);
   }, [monthStart, monthEnd]);
-
-  useEffect(() => { void load(); }, [load]);
 
   const prevMonth = () => {
     const d = new Date(year, month - 1, 1);
@@ -85,6 +88,7 @@ export default function CalendarView() {
           const score = cond.get(ds);
           const hasMeal = (kcal.get(ds) ?? 0) > 0;
           const hasExp = exp.has(ds);
+          const hasDiary = diary.has(ds);
           const isToday = ds === today;
           return (
             <button
@@ -104,6 +108,7 @@ export default function CalendarView() {
               <span style={{ display: 'flex', gap: 2, height: 6 }}>
                 {hasMeal && <span style={{ width: 5, height: 5, borderRadius: 999, background: 'var(--kcal)' }} />}
                 {hasExp && <span style={{ width: 5, height: 5, borderRadius: 999, background: 'var(--carb)' }} />}
+                {hasDiary && <span style={{ width: 5, height: 5, borderRadius: 999, background: 'var(--primary)' }} />}
               </span>
             </button>
           );
@@ -114,6 +119,7 @@ export default function CalendarView() {
         <span>セル色＝体調(1〜5)</span>
         <span><span className="dot" style={{ background: 'var(--kcal)', borderRadius: 999 }} />食事あり</span>
         <span><span className="dot" style={{ background: 'var(--carb)', borderRadius: 999 }} />支出あり</span>
+        <span><span className="dot" style={{ background: 'var(--primary)', borderRadius: 999 }} />日記あり</span>
         {loading && <span className="muted">読み込み中…</span>}
       </div>
     </div>

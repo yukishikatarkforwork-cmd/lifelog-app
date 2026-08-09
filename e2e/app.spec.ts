@@ -5,6 +5,8 @@ const ts = Date.now();
 const email = `lifelog-e2e-${ts}@example.com`;
 const password = `Test-pw-${ts}`;
 const FOOD = `E2Eテスト食品-${ts}`;
+const DIARY_TITLE = `E2E日記-${ts}`;
+const DIARY_BODY = `江ノ島に行った-${ts}`;
 const KCAL = 432;
 
 test('未ログインではログイン画面が表示される（ルートガード）', async ({ page }) => {
@@ -44,6 +46,22 @@ test('新規登録 → 食事記録 → 合計反映 → ログアウト → 再
   await page.getByTestId('expense-save').click();
   await expect(page.getByText('¥1,200').first()).toBeVisible();
 
+  // --- 日記を書く（Phase 7）---
+  await page.getByTestId('diary-title').fill(DIARY_TITLE);
+  await page.getByTestId('diary-body').fill(DIARY_BODY);
+  await page.getByTestId('diary-save').click();
+  await expect(page.getByTestId('diary-save')).toHaveText('保存しました ✓');
+
+  // --- 履歴の日記タブで本文検索して見つかる ---
+  await page.getByTestId('nav-history').click();
+  await page.getByTestId('tab-diary').click();
+  await page.getByTestId('diary-search').fill(DIARY_BODY);
+  await expect(page.getByText(DIARY_TITLE)).toBeVisible();
+  // 一致しない語では出てこない
+  await page.getByTestId('diary-search').fill(`該当なし-${ts}`);
+  await expect(page.getByText('一致する日記がありません。')).toBeVisible();
+  await page.getByTestId('nav-today').click();
+
   // --- 栄養目標を設定 → 今日の記録に「目標との比較」が出る ---
   await page.getByTestId('nav-settings').click();
   await page.getByTestId('goal-calories').fill('2000');
@@ -66,4 +84,6 @@ test('新規登録 → 食事記録 → 合計反映 → ログアウト → 再
   // クラウド保存された本人の記録が残っている
   await expect(page.getByText(FOOD)).toBeVisible();
   await expect(page.getByTestId('total-calories')).toHaveText(String(KCAL));
+  await expect(page.getByTestId('diary-title')).toHaveValue(DIARY_TITLE);
+  await expect(page.getByTestId('diary-body')).toHaveValue(DIARY_BODY);
 });

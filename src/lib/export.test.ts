@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { toCSV, toMarkdown, toExpensesCSV, toDailyMarkdown } from './export';
-import type { DailyRecord, Expense, MealEntry, MealType, WeatherRecord } from './types';
+import type { DailyRecord, DiaryEntry, Expense, MealEntry, MealType, WeatherRecord } from './types';
 
 function entry(p: Partial<MealEntry>): MealEntry {
   return {
@@ -118,5 +118,53 @@ describe('toDailyMarkdown', () => {
 
   it('記録なしは（記録なし）', () => {
     expect(toDailyMarkdown({ meals: [], conditions: [], weathers: [], expenses: [] })).toContain('（記録なし）');
+  });
+});
+
+
+function diary(p: Partial<DiaryEntry>): DiaryEntry {
+  return {
+    user_id: 'u',
+    date: p.date ?? '2026-06-08',
+    title: p.title ?? null,
+    body: p.body ?? '',
+    tags: p.tags ?? [],
+  };
+}
+
+const emptyData = { meals: [], conditions: [] as DailyRecord[], weathers: [] as WeatherRecord[], expenses: [] as Expense[] };
+
+describe('toDailyMarkdown - 日記', () => {
+  it('日記の日付・タイトル・タグ・本文を出力する', () => {
+    const md = toDailyMarkdown({
+      ...emptyData,
+      diaries: [diary({ date: '2026-06-08', title: '江ノ島に行った', body: '海がきれいだった', tags: ['おでかけ'] })],
+    });
+    expect(md).toContain('2026-06-08');
+    expect(md).toContain('**日記**: 江ノ島に行った');
+    expect(md).toContain('タグ: おでかけ');
+    expect(md).toContain('> 海がきれいだった');
+  });
+
+  it('本文の複数行は各行を引用にして、日付見出しと混ざらないようにする', () => {
+    const md = toDailyMarkdown({ ...emptyData, diaries: [diary({ body: '一行目\n## 見出しっぽい行' })] });
+    expect(md).toContain('> 一行目');
+    expect(md).toContain('> ## 見出しっぽい行');
+  });
+
+  it('本文もタイトルも空の日記は出力しない', () => {
+    const md = toDailyMarkdown({ ...emptyData, diaries: [diary({ body: '   ' })] });
+    expect(md).not.toContain('**日記**');
+  });
+
+  it('日記しかない日付も日別セクションに現れる', () => {
+    const md = toDailyMarkdown({ ...emptyData, diaries: [diary({ date: '2026-07-01', body: 'メモ' })] });
+    expect(md).toContain('(2026-07-01)');
+    expect(md).not.toContain('（記録なし）');
+  });
+
+  it('diaries を渡さなくても従来どおり動く（後方互換）', () => {
+    const md = toDailyMarkdown(emptyData);
+    expect(md).toContain('（記録なし）');
   });
 });

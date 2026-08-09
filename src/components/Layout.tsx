@@ -28,6 +28,12 @@ const IconExport = () => (
     <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
   </svg>
 );
+const IconAskNav = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/>
+    <path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9L18 15z"/>
+  </svg>
+);
 const IconSettings = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
     <line x1="4" y1="6" x2="20" y2="6"/>
@@ -43,6 +49,7 @@ const NAV = [
   { to: '/', label: '今日', Icon: IconToday, end: true, id: 'today' },
   { to: '/history', label: '履歴', Icon: IconHistory, end: false, id: 'history' },
   { to: '/graph', label: '分析', Icon: IconGraph, end: false, id: 'graph' },
+  { to: '/ask', label: 'AI', Icon: IconAskNav, end: false, id: 'ask' },
   { to: '/templates', label: 'テンプレ', Icon: IconTemplate, end: false, id: 'templates' },
   { to: '/export', label: '出力', Icon: IconExport, end: false, id: 'export' },
   { to: '/settings', label: '設定', Icon: IconSettings, end: false, id: 'settings' },

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import type { MealEntry } from '../lib/types';
+import type { DiaryEntry, MealEntry } from '../lib/types';
 import { MEAL_LABELS } from '../lib/types';
 import { formatShort } from '../lib/date';
 import { fmt, sumNutrition } from '../lib/nutrition';
@@ -14,18 +14,21 @@ export default function HistoryPage() {
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [view, setView] = useState<'list' | 'calendar'>('list');
+  const [view, setView] = useState<'list' | 'calendar' | 'diary'>('list');
+  const [diaries, setDiaries] = useState<DiaryEntry[]>([]);
+  const [diaryQuery, setDiaryQuery] = useState('');
 
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('meal_entries')
-        .select('*')
-        .order('date', { ascending: false })
-        .order('created_at');
-      if (error) { setError(error.message); setLoading(false); return; }
-      setEntries((data as MealEntry[]) ?? []);
+      const [mealRes, diaryRes] = await Promise.all([
+        supabase.from('meal_entries').select('*').order('date', { ascending: false }).order('created_at'),
+        supabase.from('diary_entries').select('*').order('date', { ascending: false }),
+      ]);
+      const err = mealRes.error || diaryRes.error;
+      if (err) { setError(err.message); setLoading(false); return; }
+      setEntries((mealRes.data as MealEntry[]) ?? []);
+      setDiaries((diaryRes.data as DiaryEntry[]) ?? []);
       setLoading(false);
     })();
   }, []);
@@ -54,6 +57,17 @@ export default function HistoryPage() {
     });
   }, [entries, query, selectedTags]);
 
+  // 日記の検索（タイトル・本文・タグを対象）
+  const filteredDiaries = useMemo(() => {
+    const q = diaryQuery.trim().toLowerCase();
+    if (q === '') return diaries;
+    return diaries.filter((d) =>
+      (d.title ?? '').toLowerCase().includes(q) ||
+      d.body.toLowerCase().includes(q) ||
+      (d.tags ?? []).some((t) => t.toLowerCase().includes(q)),
+    );
+  }, [diaries, diaryQuery]);
+
   // 日付ごとにまとめる（フィルタなし時の表示）
   const groups = useMemo(() => {
     const byDate = new Map<string, MealEntry[]>();
@@ -72,9 +86,53 @@ export default function HistoryPage() {
       <div className="tabs">
         <button className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}>リスト</button>
         <button className={view === 'calendar' ? 'active' : ''} onClick={() => setView('calendar')}>カレンダー</button>
+        <button className={view === 'diary' ? 'active' : ''} data-testid="tab-diary" onClick={() => setView('diary')}>日記</button>
       </div>
 
       {view === 'calendar' && <CalendarView />}
+
+      {view === 'diary' && (<>
+        <div className="card">
+          <div style={{ position: 'relative' }}>
+            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', display: 'flex', pointerEvents: 'none' }}>
+              <IconSearch />
+            </span>
+            <input
+              data-testid="diary-search"
+              value={diaryQuery}
+              onChange={(e) => setDiaryQuery(e.target.value)}
+              placeholder="タイトル・本文・タグで検索"
+              style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--input-bg)', color: 'var(--text)' }}
+            />
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="empty">読み込み中…</div>
+        ) : diaries.length === 0 ? (
+          <div className="empty">まだ日記がありません。<br />「今日」タブから書いてみましょう。</div>
+        ) : filteredDiaries.length === 0 ? (
+          <div className="empty">一致する日記がありません。</div>
+        ) : (<>
+          {diaryQuery.trim() !== '' && (
+            <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>{filteredDiaries.length} 件ヒット</div>
+          )}
+          {filteredDiaries.map((d) => (
+            <Link to={`/day/${d.date}`} key={d.date} className="card" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
+              <div className="row-between">
+                <strong>{d.title || formatShort(d.date)}</strong>
+                <span className="muted" style={{ fontSize: 12 }}>{formatShort(d.date)}</span>
+              </div>
+              <div className="muted" style={{ fontSize: 13, marginTop: 4, whiteSpace: 'pre-wrap' }}>
+                {d.body.length > 120 ? `${d.body.slice(0, 120)}…` : d.body}
+              </div>
+              {d.tags?.length > 0 && (
+                <div style={{ marginTop: 6 }}>{d.tags.map((t) => <span className="tag" key={t}>{t}</span>)}</div>
+              )}
+            </Link>
+          ))}
+        </>)}
+      </>)}
 
       {view === 'list' && (<>
       {/* 検索・絞り込み */}

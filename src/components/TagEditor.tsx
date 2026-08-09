@@ -5,9 +5,12 @@ const SUGGESTED = ['外食', '自炊', '間食', '脂質多め', '高たんぱ�
 export default function TagEditor({
   tags,
   onChange,
+  suggested = SUGGESTED,
 }: {
   tags: string[];
   onChange: (tags: string[]) => void;
+  /** 候補タグ。用途ごとに差し替える（既定は食事向け） */
+  suggested?: string[];
 }) {
   const [input, setInput] = useState('');
 
@@ -41,7 +44,7 @@ export default function TagEditor({
         />
       </div>
       <div className="tag-input">
-        {SUGGESTED.filter((s) => !tags.includes(s)).map((s) => (
+        {suggested.filter((s) => !tags.includes(s)).map((s) => (
           <button key={s} type="button" className="tag" style={{ cursor: 'pointer', border: 'none' }} onClick={() => add(s)}>
             + {s}
           </button>

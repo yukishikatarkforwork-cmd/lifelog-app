@@ -157,7 +157,7 @@ export default function TodayPage() {
             type="date"
             aria-label="日付を選択"
             value={date}
-            max={todayStr()}
+            /* 旅のしおりから先の日付を開けるよう、未来も選べるようにしている */
             onChange={(e) => { if (e.target.value) goToDate(e.target.value); }}
           />
         </label>

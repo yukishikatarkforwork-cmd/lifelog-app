@@ -189,14 +189,68 @@ export interface LinkEntry {
   updated_at?: string;
 }
 
+// ---------- Phase 15: 旅のしおり ----------
+/** しおりの項目の種類 */
+export type TripItemKind = 'move' | 'stay' | 'eat' | 'see' | 'other';
+
+export const TRIP_ITEM_KINDS: Array<{ key: TripItemKind; label: string; icon: string }> = [
+  { key: 'move', label: '移動', icon: '🚃' },
+  { key: 'stay', label: '宿', icon: '🏨' },
+  { key: 'eat', label: '食事', icon: '🍽️' },
+  { key: 'see', label: '観光', icon: '📷' },
+  { key: 'other', label: 'その他', icon: '📌' },
+];
+
+export const TRIP_ITEM_KIND_LABELS: Record<TripItemKind, string> = Object.fromEntries(
+  TRIP_ITEM_KINDS.map((k) => [k.key, k.label]),
+) as Record<TripItemKind, string>;
+
+export interface Trip {
+  id: string;
+  user_id: string;
+  title: string;
+  destination: string | null;
+  start_date: string;
+  end_date: string;
+  memo: string | null;
+  budget: number | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface TripItem {
+  id: string;
+  trip_id: string;
+  user_id: string;
+  date: string;
+  start_time: string | null;
+  kind: TripItemKind;
+  title: string;
+  place: string | null;
+  url: string | null;
+  memo: string | null;
+  cost: number | null;
+  sort_order: number;
+}
+
+export interface TripChecklistItem {
+  id: string;
+  trip_id: string;
+  user_id: string;
+  text: string;
+  checked: boolean;
+  sort_order: number;
+}
+
 // ---------- Phase 9: カレンダー共有 ----------
 /** 共有できるカテゴリ。共有はこの単位でしか許可しない */
-export type ShareScope = 'diary' | 'condition' | 'weather' | 'meal' | 'expense' | 'photo' | 'link';
+export type ShareScope = 'diary' | 'condition' | 'weather' | 'meal' | 'expense' | 'photo' | 'link' | 'trip';
 
 export const SHARE_SCOPE_OPTIONS: Array<{ key: ShareScope; label: string; note?: string }> = [
   { key: 'diary', label: '日記' },
   { key: 'photo', label: '写真' },
   { key: 'link', label: 'リンク' },
+  { key: 'trip', label: '旅のしおり' },
   { key: 'weather', label: '天気・気圧' },
   { key: 'meal', label: '食事・栄養' },
   { key: 'condition', label: '体調・睡眠・服薬', note: 'センシティブ' },

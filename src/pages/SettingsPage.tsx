@@ -181,6 +181,12 @@ export default function SettingsPage() {
       </div>
 
       <div className="card">
+        <h2>テンプレート</h2>
+        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>よく食べる食品や食事セットを登録しておくと、記録が数タップで終わります。</p>
+        <Link to="/templates" className="btn outline full" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>テンプレート画面を開く</Link>
+      </div>
+
+      <div className="card">
         <h2>データ出力</h2>
         <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>食事記録を CSV / Markdown で書き出します（AI 分析・表計算向け）。</p>
         <Link to="/export" className="btn outline full" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>出力画面を開く</Link>

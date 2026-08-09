@@ -8,6 +8,7 @@ const FOOD = `E2Eテスト食品-${ts}`;
 const DIARY_TITLE = `E2E日記-${ts}`;
 const DIARY_BODY = `江ノ島に行った-${ts}`;
 const SHARE_TARGET = `lifelog-e2e-share-${ts}@example.com`;
+const TRIP_TITLE = `E2E旅行-${ts}`;
 const KCAL = 432;
 
 test('未ログインではログイン画面が表示される（ルートガード）', async ({ page }) => {
@@ -74,6 +75,29 @@ test('新規登録 → 食事記録 → 合計反映 → ログアウト → 再
 
   // --- 写真カードが表示される（アップロードは Storage 設定に依存するのでここでは行わない）---
   await expect(page.getByRole('heading', { name: '写真' })).toBeVisible();
+
+  // --- 旅のしおり: 作成 → 予定 → 持ち物（Phase 15）---
+  await page.getByTestId('nav-trips').click();
+  await page.getByTestId('trip-new').click();
+  await page.getByTestId('trip-title').fill(TRIP_TITLE);
+  // 未来日を入れられること自体がここでの確認点（記録用の入力とは違う）
+  await page.getByTestId('trip-start').fill('2030-05-01');
+  await page.getByTestId('trip-end').fill('2030-05-03');
+  await page.getByTestId('trip-create').click();
+
+  // 一覧に出る → 開く
+  await page.getByText(TRIP_TITLE).click();
+  await expect(page.getByText('2泊3日')).toBeVisible();
+
+  // 予定を1件追加
+  await page.getByTestId('trip-item-title').fill('清水寺を見る');
+  await page.getByTestId('trip-item-add').click();
+  await expect(page.getByText('清水寺を見る')).toBeVisible();
+
+  // 持ち物を1件追加
+  await page.getByTestId('trip-check-text').fill('充電器');
+  await page.getByRole('button', { name: '追加', exact: true }).click();
+  await expect(page.getByText('充電器')).toBeVisible();
 
   // --- カレンダー共有: 作成 → 一覧に出る → 解除（Phase 9）---
   await page.getByTestId('nav-settings').click();

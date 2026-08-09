@@ -802,3 +802,129 @@ as $$
 $$;
 
 grant execute on function public.lifelog_dates(integer) to authenticated;
+
+-- =====================================================================
+-- Phase 15: 旅のしおり
+--
+-- ここまでの機能はすべて「過去の記録」で、user × date が単位だった。
+-- しおりは性質が違う:
+--   - 未来が主役（予定を立てる）
+--   - 1日ではなく期間がひとまとまり（2泊3日を1つとして扱う）
+--   - 時刻がある（10:00 出発、12:30 昼食）
+-- 日単位のテーブルに混ぜると歪むので、独立した概念として持たせる。
+--
+-- このアプリで作る価値は、旅行が終わったあと。
+-- 日記・写真・支出・体調が同じ期間に既に貯まっているので、
+-- しおりがそのまま「旅の記録」に変わる（他のしおりアプリは旅行後に死ぬ）。
+-- =====================================================================
+create table if not exists public.trips (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  title       text not null,
+  destination text,
+  start_date  date not null,
+  end_date    date not null,
+  memo        text,
+  budget      numeric,                        -- 予算。実績は expenses 側から集計する
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  check (end_date >= start_date)
+);
+
+create index if not exists trips_user_date_idx on public.trips (user_id, start_date);
+
+-- しおりの項目（予定）。時刻は任意（「この日のどこか」も表現したいため）
+create table if not exists public.trip_items (
+  id         uuid primary key default gen_random_uuid(),
+  trip_id    uuid not null references public.trips (id) on delete cascade,
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  date       date not null,
+  start_time time,
+  kind       text not null default 'other'
+               check (kind in ('move', 'stay', 'eat', 'see', 'other')),
+  title      text not null,
+  place      text,
+  url        text,
+  memo       text,
+  cost       numeric,                          -- 見積もり
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists trip_items_trip_idx on public.trip_items (trip_id, date, start_time, sort_order);
+
+-- 持ち物チェックリスト
+create table if not exists public.trip_checklist (
+  id         uuid primary key default gen_random_uuid(),
+  trip_id    uuid not null references public.trips (id) on delete cascade,
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  text       text not null,
+  checked    boolean not null default false,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists trip_checklist_trip_idx on public.trip_checklist (trip_id, sort_order);
+
+drop trigger if exists trg_trips_updated on public.trips;
+create trigger trg_trips_updated before update on public.trips
+  for each row execute function public.set_updated_at();
+drop trigger if exists trg_trip_items_updated on public.trip_items;
+create trigger trg_trip_items_updated before update on public.trip_items
+  for each row execute function public.set_updated_at();
+drop trigger if exists trg_trip_checklist_updated on public.trip_checklist;
+create trigger trg_trip_checklist_updated before update on public.trip_checklist
+  for each row execute function public.set_updated_at();
+
+alter table public.trips          enable row level security;
+alter table public.trip_items     enable row level security;
+alter table public.trip_checklist enable row level security;
+
+drop policy if exists "own trips" on public.trips;
+create policy "own trips" on public.trips
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "own trip_items" on public.trip_items;
+create policy "own trip_items" on public.trip_items
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "own trip_checklist" on public.trip_checklist;
+create policy "own trip_checklist" on public.trip_checklist
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- 共有: 旅行期間のどこか1日でも共有範囲に入っていれば、しおり全体を見せる。
+-- しおりは期間でひとまとまりなので、日単位で切ると意味をなさないため。
+drop policy if exists "shared trips read" on public.trips;
+create policy "shared trips read" on public.trips
+  for select to authenticated
+  using (public.can_view(user_id, 'trip', start_date) or public.can_view(user_id, 'trip', end_date));
+
+drop policy if exists "shared trip_items read" on public.trip_items;
+create policy "shared trip_items read" on public.trip_items
+  for select to authenticated
+  using (exists (select 1 from public.trips t where t.id = trip_id));
+
+drop policy if exists "shared trip_checklist read" on public.trip_checklist;
+create policy "shared trip_checklist read" on public.trip_checklist
+  for select to authenticated
+  using (exists (select 1 from public.trips t where t.id = trip_id));
+
+grant select, insert, update, delete on public.trips          to authenticated;
+grant select, insert, update, delete on public.trip_items     to authenticated;
+grant select, insert, update, delete on public.trip_checklist to authenticated;
+
+-- 旅行の実績支出（期間内の expenses を合計する）。
+-- 予算と並べて出すために使う。
+create or replace function public.trip_actual_cost(p_trip_id uuid)
+returns numeric
+language sql
+stable
+as $$
+  select coalesce(sum(e.amount), 0)
+  from public.trips t
+  join public.expenses e
+    on e.user_id = t.user_id and e.date between t.start_date and t.end_date
+  where t.id = p_trip_id;
+$$;
+
+grant execute on function public.trip_actual_cost(uuid) to authenticated;

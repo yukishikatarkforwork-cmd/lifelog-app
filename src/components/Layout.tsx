@@ -17,15 +17,11 @@ const IconGraph = () => (
     <line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>
   </svg>
 );
-const IconTemplate = () => (
+const IconTripNav = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/>
-  </svg>
-);
-const IconExport = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-    <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+    <rect x="2" y="7" width="20" height="14" rx="2"/>
+    <path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/>
+    <line x1="2" y1="13" x2="22" y2="13"/>
   </svg>
 );
 const IconAskNav = () => (
@@ -50,8 +46,7 @@ const NAV = [
   { to: '/history', label: '履歴', Icon: IconHistory, end: false, id: 'history' },
   { to: '/graph', label: '分析', Icon: IconGraph, end: false, id: 'graph' },
   { to: '/ask', label: 'AI', Icon: IconAskNav, end: false, id: 'ask' },
-  { to: '/templates', label: 'テンプレ', Icon: IconTemplate, end: false, id: 'templates' },
-  { to: '/export', label: '出力', Icon: IconExport, end: false, id: 'export' },
+  { to: '/trips', label: '旅', Icon: IconTripNav, end: false, id: 'trips' },
   { to: '/settings', label: '設定', Icon: IconSettings, end: false, id: 'settings' },
 ];
 

@@ -1,4 +1,4 @@
-import type { DailyRecord, DiaryEntry, Expense, MealEntry, MealType, WeatherRecord } from './types';
+import type { DailyRecord, DiaryEntry, Expense, MealEntry, MealType, Photo, WeatherRecord } from './types';
 import { MEAL_LABELS, WEATHER_LABELS } from './types';
 import { fmt, sumNutrition } from './nutrition';
 import { formatShort } from './date';
@@ -86,6 +86,7 @@ export interface DailyExportData {
   weathers: WeatherRecord[];
   expenses: Expense[];
   diaries?: DiaryEntry[];
+  photos?: Photo[];
 }
 
 /** 全ドメインを日別にまとめた統合 Markdown（AI 分析向け） */
@@ -97,8 +98,10 @@ export function toDailyMarkdown(data: DailyExportData, title = '生活記録'): 
   const expBy = new Map<string, Expense[]>();
   for (const e of data.expenses) { const a = expBy.get(e.date) ?? []; a.push(e); expBy.set(e.date, a); }
   const diaryBy = new Map((data.diaries ?? []).map((d) => [d.date, d]));
+  const photoBy = new Map<string, Photo[]>();
+  for (const p of data.photos ?? []) { const a = photoBy.get(p.date) ?? []; a.push(p); photoBy.set(p.date, a); }
 
-  const dates = new Set<string>([...mealsBy.keys(), ...condBy.keys(), ...wthBy.keys(), ...expBy.keys(), ...diaryBy.keys()]);
+  const dates = new Set<string>([...mealsBy.keys(), ...condBy.keys(), ...wthBy.keys(), ...expBy.keys(), ...diaryBy.keys(), ...photoBy.keys()]);
   const sorted = [...dates].sort();
 
   const lines: string[] = [`# ${title}`, ''];
@@ -151,6 +154,14 @@ export function toDailyMarkdown(data: DailyExportData, title = '生活記録'): 
       for (const e of exps) {
         lines.push(`- ${e.category} ¥${e.amount.toLocaleString()}${e.payment_method ? `（${e.payment_method}）` : ''}${e.memo ? ` ${e.memo.replace(/\n/g, ' ')}` : ''}`);
       }
+      lines.push('');
+    }
+
+    const photos = photoBy.get(date) ?? [];
+    if (photos.length > 0) {
+      // 画像そのものは出せないが、キャプションは出来事の記録として役に立つ
+      const captions = photos.map((p) => p.caption).filter((c): c is string => Boolean(c && c.trim()));
+      lines.push(`**写真**: ${photos.length} 枚${captions.length > 0 ? `（${captions.join(' / ')}）` : ''}`);
       lines.push('');
     }
 

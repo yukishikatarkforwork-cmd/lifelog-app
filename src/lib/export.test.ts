@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { toCSV, toMarkdown, toExpensesCSV, toDailyMarkdown } from './export';
-import type { DailyRecord, DiaryEntry, Expense, MealEntry, MealType, WeatherRecord } from './types';
+import type { DailyRecord, DiaryEntry, Expense, MealEntry, MealType, Photo, WeatherRecord } from './types';
 
 function entry(p: Partial<MealEntry>): MealEntry {
   return {
@@ -166,5 +166,47 @@ describe('toDailyMarkdown - 日記', () => {
   it('diaries を渡さなくても従来どおり動く（後方互換）', () => {
     const md = toDailyMarkdown(emptyData);
     expect(md).toContain('（記録なし）');
+  });
+});
+
+
+function photo(p: Partial<Photo>): Photo {
+  return {
+    id: p.id ?? crypto.randomUUID(),
+    user_id: 'u',
+    date: p.date ?? '2026-06-08',
+    storage_path: p.storage_path ?? 'u/2026-06-08/a.webp',
+    caption: p.caption ?? null,
+    width: 1600, height: 1200, size_bytes: 200_000,
+  };
+}
+
+describe('toDailyMarkdown - 写真', () => {
+  it('枚数を出力する', () => {
+    const md = toDailyMarkdown({ ...emptyData, photos: [photo({}), photo({ storage_path: 'u/2026-06-08/b.webp' })] });
+    expect(md).toContain('**写真**: 2 枚');
+  });
+
+  it('キャプションがあれば併記する（AIの手がかりになるため）', () => {
+    const md = toDailyMarkdown({ ...emptyData, photos: [photo({ caption: '江ノ島の夕日' })] });
+    expect(md).toContain('江ノ島の夕日');
+  });
+
+  it('キャプションが空のものは括弧に含めない', () => {
+    const md = toDailyMarkdown({
+      ...emptyData,
+      photos: [photo({ caption: '  ' }), photo({ storage_path: 'u/2026-06-08/b.webp', caption: 'ラーメン' })],
+    });
+    expect(md).toContain('**写真**: 2 枚（ラーメン）');
+  });
+
+  it('写真しかない日付も日別セクションに現れる', () => {
+    const md = toDailyMarkdown({ ...emptyData, photos: [photo({ date: '2026-08-01' })] });
+    expect(md).toContain('(2026-08-01)');
+    expect(md).not.toContain('（記録なし）');
+  });
+
+  it('photos を渡さなくても従来どおり動く（後方互換）', () => {
+    expect(toDailyMarkdown(emptyData)).toContain('（記録なし）');
   });
 });

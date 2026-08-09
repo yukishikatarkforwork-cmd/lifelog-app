@@ -33,6 +33,9 @@ export interface ExpenseRow {
 export interface DiaryRow {
   date: string; title: string | null; body: string; tags: string[] | null;
 }
+export interface PhotoRow {
+  date: string; caption: string | null;
+}
 
 export interface Dataset {
   meals: MealRow[];
@@ -40,6 +43,7 @@ export interface Dataset {
   weathers: WeatherRow[];
   expenses: ExpenseRow[];
   diaries: DiaryRow[];
+  photos: PhotoRow[];
 }
 
 /** PostgREST の1000行制限を越えるため、range で分割して全件取る */
@@ -72,15 +76,17 @@ export async function fetchRange(
     return filtered.order('date').range(from, to);
   };
 
-  const [meals, conditions, weathers, expenses, diaries] = await Promise.all([
+  const [meals, conditions, weathers, expenses, diaries, photos] = await Promise.all([
     fetchAll<MealRow>(page('meal_entries', 'date,meal_type,food_name,amount,calories,protein,fat,carbohydrate,memo')),
     fetchAll<ConditionRow>(page('daily_records', 'date,condition_score,mood_score,sleep_hours,headache,medication,memo')),
     fetchAll<WeatherRow>(page('weather_records', 'date,weather,pressure_hpa,temperature,humidity')),
     fetchAll<ExpenseRow>(page('expenses', 'date,amount,category,payment_method,memo')),
     fetchAll<DiaryRow>(page('diary_entries', 'date,title,body,tags')),
+    // 写真そのものは渡せないが、キャプションは出来事の手がかりになるので拾う
+    fetchAll<PhotoRow>(page('photos', 'date,caption')),
   ]);
 
-  return { meals, conditions, weathers, expenses, diaries };
+  return { meals, conditions, weathers, expenses, diaries, photos };
 }
 
 // ---------- 集計サマリー ----------
@@ -142,6 +148,7 @@ export function collectDates(d: Dataset): string[] {
     ...d.weathers.map((r) => r.date),
     ...d.expenses.map((r) => r.date),
     ...d.diaries.map((r) => r.date),
+    ...d.photos.map((r) => r.date),
   ])].sort();
 }
 
@@ -151,6 +158,7 @@ export interface DayIndex {
   meals: Map<string, MealRow[]>;
   exps: Map<string, ExpenseRow[]>;
   diary: Map<string, DiaryRow>;
+  photos: Map<string, PhotoRow[]>;
 }
 
 export function indexByDate(d: Dataset): DayIndex {
@@ -158,10 +166,12 @@ export function indexByDate(d: Dataset): DayIndex {
   for (const m of d.meals) { const a = meals.get(m.date) ?? []; a.push(m); meals.set(m.date, a); }
   const exps = new Map<string, ExpenseRow[]>();
   for (const e of d.expenses) { const a = exps.get(e.date) ?? []; a.push(e); exps.set(e.date, a); }
+  const photos = new Map<string, PhotoRow[]>();
+  for (const p of d.photos) { const a = photos.get(p.date) ?? []; a.push(p); photos.set(p.date, a); }
   return {
     cond: new Map(d.conditions.map((c) => [c.date, c])),
     wth: new Map(d.weathers.map((w) => [w.date, w])),
-    meals, exps,
+    meals, exps, photos,
     diary: new Map(d.diaries.map((e) => [e.date, e])),
   };
 }
@@ -238,6 +248,12 @@ export function formatFullDaily(idx: DayIndex, dates: string[], heading = '## �
       }
     }
 
+    const photos = idx.photos.get(date) ?? [];
+    if (photos.length > 0) {
+      const captions = photos.map((p) => p.caption).filter((c): c is string => Boolean(c && c.trim()));
+      lines.push(`写真: ${photos.length} 枚${captions.length > 0 ? `（${captions.join(' / ')}）` : ''}`);
+    }
+
     const d = idx.diary.get(date);
     if (d && (d.body.trim() || d.title)) {
       lines.push(`日記${d.title ? `: ${d.title}` : ''}`);
@@ -300,6 +316,13 @@ export function buildDaySummaryText(date: string, idx: DayIndex): string {
     const sum = Math.round(exps.reduce((s, e) => s + e.amount, 0));
     parts.push(`支出${sum}円`);
     parts.push(`内訳: ${[...new Set(exps.map((e) => e.category))].join('、')}`);
+  }
+
+  const photos = idx.photos.get(date) ?? [];
+  if (photos.length > 0) {
+    const captions = photos.map((p) => p.caption).filter((c): c is string => Boolean(c && c.trim()));
+    parts.push(`写真${photos.length}枚`);
+    if (captions.length > 0) parts.push(captions.join('、'));
   }
 
   const d = idx.diary.get(date);

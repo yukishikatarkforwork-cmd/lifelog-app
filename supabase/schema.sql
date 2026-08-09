@@ -503,3 +503,239 @@ as $$
 $$;
 
 grant execute on function public.similar_days(date, integer) to authenticated;
+
+-- =====================================================================
+-- Phase 8: 写真
+--
+-- バケットは必ず private にする。public にすると URL を知っている全員が見られる。
+-- 表示は署名付きURL（有効期限つき）を都度発行する。
+-- 保存パスは {user_id}/{date}/{uuid}.webp。先頭を user_id にしているのは
+-- Storage のポリシーがフォルダ名で本人判定できるようにするため。
+--
+-- 画像はアップロード前にブラウザ側で長辺1600px/WebP に再エンコードする。
+-- 無料枠1GBに対しスマホ写真は1枚3〜5MBあり、そのままだと250枚で埋まるため。
+-- 再エンコードの副作用で EXIF（位置情報を含む）が落ちるのでプライバシー面でも都合がよい。
+-- =====================================================================
+insert into storage.buckets (id, name, public)
+values ('photos', 'photos', false)
+on conflict (id) do nothing;
+
+drop policy if exists "own photo objects read" on storage.objects;
+create policy "own photo objects read" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "own photo objects write" on storage.objects;
+create policy "own photo objects write" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "own photo objects delete" on storage.objects;
+create policy "own photo objects delete" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text);
+
+create table if not exists public.photos (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  date        date not null,
+  storage_path text not null unique,
+  caption     text,
+  width       integer,
+  height      integer,
+  size_bytes  integer,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+create index if not exists photos_user_date_idx on public.photos (user_id, date);
+
+drop trigger if exists trg_photos_updated on public.photos;
+create trigger trg_photos_updated before update on public.photos
+  for each row execute function public.set_updated_at();
+
+alter table public.photos enable row level security;
+
+drop policy if exists "own photos" on public.photos;
+create policy "own photos" on public.photos
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+grant select, insert, update, delete on public.photos to authenticated;
+
+-- =====================================================================
+-- Phase 9: カレンダー共有（ユーザー間・読み取り専用）
+--
+-- このアプリの中身は体調・服薬・睡眠・支出というセンシティブ情報の塊なので、
+-- 「カレンダーを共有」を素朴に作ると全部見えてしまう。
+-- そこで共有は必ず次の3つで絞る:
+--   scopes     … 何を共有するか（日記だけ、食事だけ、体調は除外 など）
+--   期間        … いつからいつまで（null は無制限）
+--   読み取り専用 … 相手に書き込み権は一切与えない（SELECT ポリシーしか追加しない）
+--
+-- 公開リンク方式ではなくユーザー間招待にしているのは、URL が漏れた時点で
+-- 漏洩になる方式を避けるため。解除も確実にできる。
+-- =====================================================================
+create table if not exists public.shares (
+  id            uuid primary key default gen_random_uuid(),
+  owner_id      uuid not null references auth.users (id) on delete cascade,
+  owner_email   text not null,                    -- 相手に表示する用（auth.users は参照できないため持たせる）
+  invitee_email text not null,                    -- 招待先。承諾時にログイン中のメールと突き合わせる
+  viewer_id     uuid references auth.users (id) on delete cascade,  -- 承諾後に埋まる
+  scopes        text[] not null default '{diary}',
+  start_date    date,
+  end_date      date,
+  status        text not null default 'pending' check (status in ('pending', 'accepted', 'revoked')),
+  created_at    timestamptz not null default now(),
+  accepted_at   timestamptz,
+  updated_at    timestamptz not null default now(),
+  -- 同じ相手への重複招待を防ぐ
+  unique (owner_id, invitee_email)
+);
+
+create index if not exists shares_viewer_idx on public.shares (viewer_id, status);
+create index if not exists shares_invitee_idx on public.shares (lower(invitee_email), status);
+
+drop trigger if exists trg_shares_updated on public.shares;
+create trigger trg_shares_updated before update on public.shares
+  for each row execute function public.set_updated_at();
+
+alter table public.shares enable row level security;
+
+-- 共有元は自分の作った共有を自由に操作できる
+drop policy if exists "owner manages shares" on public.shares;
+create policy "owner manages shares" on public.shares
+  for all to authenticated
+  using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
+
+-- 招待された側は、自分宛の招待と自分が承諾済みの共有を読めるだけ（書き換えは不可）
+drop policy if exists "invitee reads shares" on public.shares;
+create policy "invitee reads shares" on public.shares
+  for select to authenticated
+  using (
+    auth.uid() = viewer_id
+    or lower(invitee_email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  );
+
+grant select, insert, update, delete on public.shares to authenticated;
+
+-- 「この日のこのカテゴリを、今ログインしている人が見てよいか」を判定する。
+-- security definer にしているのは、閲覧側が shares を直接読めない経路でも
+-- 判定できるようにするため。auth.uid() を関数内で固定しているので、
+-- 引数を細工しても他人になりすますことはできない。
+create or replace function public.can_view(p_owner uuid, p_scope text, p_date date)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.shares s
+    where s.owner_id = p_owner
+      and s.viewer_id = auth.uid()
+      and s.status = 'accepted'
+      and p_scope = any (s.scopes)
+      and (s.start_date is null or p_date >= s.start_date)
+      and (s.end_date   is null or p_date <= s.end_date)
+  );
+$$;
+
+grant execute on function public.can_view(uuid, text, date) to authenticated;
+
+-- 閲覧用のポリシーを各テーブルに足す。
+-- 既存の「own X」（FOR ALL）とは別の SELECT ポリシーなので OR で効き、
+-- 相手に書き込み権は増えない。
+drop policy if exists "shared diary read" on public.diary_entries;
+create policy "shared diary read" on public.diary_entries
+  for select to authenticated using (public.can_view(user_id, 'diary', date));
+
+drop policy if exists "shared condition read" on public.daily_records;
+create policy "shared condition read" on public.daily_records
+  for select to authenticated using (public.can_view(user_id, 'condition', date));
+
+drop policy if exists "shared weather read" on public.weather_records;
+create policy "shared weather read" on public.weather_records
+  for select to authenticated using (public.can_view(user_id, 'weather', date));
+
+drop policy if exists "shared meal read" on public.meal_entries;
+create policy "shared meal read" on public.meal_entries
+  for select to authenticated using (public.can_view(user_id, 'meal', date));
+
+drop policy if exists "shared expense read" on public.expenses;
+create policy "shared expense read" on public.expenses
+  for select to authenticated using (public.can_view(user_id, 'expense', date));
+
+drop policy if exists "shared photo read" on public.photos;
+create policy "shared photo read" on public.photos
+  for select to authenticated using (public.can_view(user_id, 'photo', date));
+
+-- 共有された写真の実体も読めるようにする。
+-- パスの先頭が所有者の user_id なので、そこから所有者を割り出して判定する。
+drop policy if exists "shared photo objects read" on storage.objects;
+create policy "shared photo objects read" on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'photos'
+    and public.can_view(
+      ((storage.foldername(name))[1])::uuid,
+      'photo',
+      ((storage.foldername(name))[2])::date
+    )
+  );
+
+-- 招待を承諾する。
+-- 招待側が shares を直接 UPDATE できてしまうと scopes や期間を書き換えられるため、
+-- 承諾はこの関数だけに絞り、viewer_id と status 以外は触らせない。
+create or replace function public.accept_share(p_share_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
+  v_rows  integer;
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+  if v_email = '' then
+    raise exception 'メールアドレスを確認できませんでした';
+  end if;
+
+  update public.shares
+     set viewer_id = auth.uid(), status = 'accepted', accepted_at = now()
+   where id = p_share_id
+     and status = 'pending'
+     and lower(invitee_email) = v_email;
+
+  get diagnostics v_rows = row_count;
+  if v_rows = 0 then
+    raise exception '承諾できる招待が見つかりませんでした';
+  end if;
+end;
+$$;
+
+revoke execute on function public.accept_share(uuid) from public, anon;
+grant execute on function public.accept_share(uuid) to authenticated;
+
+-- 対象日の列挙に写真を含める（photos は上で作られるので、ここで定義し直す）
+create or replace function public.lifelog_dates(p_limit integer default 2000)
+returns table (date date)
+language sql
+stable
+as $$
+  select d from (
+    select date as d from public.daily_records  where user_id = auth.uid()
+    union select date from public.weather_records where user_id = auth.uid()
+    union select date from public.meal_entries   where user_id = auth.uid()
+    union select date from public.expenses       where user_id = auth.uid()
+    union select date from public.diary_entries  where user_id = auth.uid()
+    union select date from public.photos         where user_id = auth.uid()
+  ) t
+  order by d desc
+  limit greatest(1, least(p_limit, 5000));
+$$;
+
+grant execute on function public.lifelog_dates(integer) to authenticated;

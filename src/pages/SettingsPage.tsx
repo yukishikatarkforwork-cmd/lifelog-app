@@ -185,6 +185,14 @@ export default function SettingsPage() {
       </div>
 
       <div className="card">
+        <h2>カレンダー共有</h2>
+        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+          自分の記録を相手に読み取り専用で見せます。共有する項目（日記だけ／体調は除く など）と期間を選べます。
+        </p>
+        <Link to="/share" className="btn outline full" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>共有の設定を開く</Link>
+      </div>
+
+      <div className="card">
         <h2>AI 検索インデックス</h2>
         <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
           「AI」タブの全期間モードと「似た日を探す」で使う索引です。日記を保存すると自動で更新されますが、

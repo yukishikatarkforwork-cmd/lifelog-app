@@ -14,6 +14,8 @@ const TemplatesPage = lazy(() => import('./pages/TemplatesPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const ExportPage = lazy(() => import('./pages/ExportPage'));
 const AskPage = lazy(() => import('./pages/AskPage'));
+const SharePage = lazy(() => import('./pages/SharePage'));
+const SharedCalendarPage = lazy(() => import('./pages/SharedCalendarPage'));
 
 const Loading = () => <div className="spinner-wrap">読み込み中…</div>;
 
@@ -49,6 +51,8 @@ export default function App() {
           <Route path="/graph" element={<GraphPage />} />
           <Route path="/templates" element={<TemplatesPage />} />
           <Route path="/ask" element={<AskPage />} />
+          <Route path="/share" element={<SharePage />} />
+          <Route path="/shared/:ownerId" element={<SharedCalendarPage />} />
           <Route path="/export" element={<ExportPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>

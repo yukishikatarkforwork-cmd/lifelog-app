@@ -7,6 +7,7 @@ const password = `Test-pw-${ts}`;
 const FOOD = `E2Eテスト食品-${ts}`;
 const DIARY_TITLE = `E2E日記-${ts}`;
 const DIARY_BODY = `江ノ島に行った-${ts}`;
+const SHARE_TARGET = `lifelog-e2e-share-${ts}@example.com`;
 const KCAL = 432;
 
 test('未ログインではログイン画面が表示される（ルートガード）', async ({ page }) => {
@@ -70,6 +71,24 @@ test('新規登録 → 食事記録 → 合計反映 → ログアウト → 再
   await page.getByTestId('nav-today').click();
   await expect(page.getByText('目標との比較')).toBeVisible();
   await expect(page.getByText(`${KCAL} / 2000 kcal`)).toBeVisible();
+
+  // --- 写真カードが表示される（アップロードは Storage 設定に依存するのでここでは行わない）---
+  await expect(page.getByRole('heading', { name: '写真' })).toBeVisible();
+
+  // --- カレンダー共有: 作成 → 一覧に出る → 解除（Phase 9）---
+  await page.getByTestId('nav-settings').click();
+  await page.getByRole('link', { name: '共有の設定を開く' }).click();
+  await page.getByTestId('share-email').fill(SHARE_TARGET);
+  // 既定は日記・写真。体調も足して、範囲がそのまま保存されることを見る
+  await page.getByTestId('scope-condition').click();
+  await page.getByTestId('share-create').click();
+  await expect(page.getByText(SHARE_TARGET)).toBeVisible();
+  await expect(page.getByText('承諾待ち')).toBeVisible();
+
+  // 解除すると一覧から消える
+  page.once('dialog', (d) => d.accept());
+  await page.getByRole('button', { name: '共有を解除' }).click();
+  await expect(page.getByText(SHARE_TARGET)).toHaveCount(0);
 
   // --- ログアウト ---
   await page.getByTestId('nav-settings').click();

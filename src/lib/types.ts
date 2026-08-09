@@ -159,6 +159,53 @@ export const DIARY_TAG_SUGGESTIONS = [
   '仕事', '家族', '友人', 'おでかけ', '旅行', '買い物', '運動', '読書', '嬉しい', 'しんどい',
 ];
 
+// ---------- Phase 8: 写真 ----------
+export interface Photo {
+  id: string;
+  user_id: string;
+  date: string;
+  storage_path: string;
+  caption: string | null;
+  width: number | null;
+  height: number | null;
+  size_bytes: number | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// ---------- Phase 9: カレンダー共有 ----------
+/** 共有できるカテゴリ。共有はこの単位でしか許可しない */
+export type ShareScope = 'diary' | 'condition' | 'weather' | 'meal' | 'expense' | 'photo';
+
+export const SHARE_SCOPE_OPTIONS: Array<{ key: ShareScope; label: string; note?: string }> = [
+  { key: 'diary', label: '日記' },
+  { key: 'photo', label: '写真' },
+  { key: 'weather', label: '天気・気圧' },
+  { key: 'meal', label: '食事・栄養' },
+  { key: 'condition', label: '体調・睡眠・服薬', note: 'センシティブ' },
+  { key: 'expense', label: '家計簿', note: 'センシティブ' },
+];
+
+export const SHARE_SCOPE_LABELS: Record<ShareScope, string> = Object.fromEntries(
+  SHARE_SCOPE_OPTIONS.map((o) => [o.key, o.label]),
+) as Record<ShareScope, string>;
+
+export type ShareStatus = 'pending' | 'accepted' | 'revoked';
+
+export interface Share {
+  id: string;
+  owner_id: string;
+  owner_email: string;
+  invitee_email: string;
+  viewer_id: string | null;
+  scopes: ShareScope[];
+  start_date: string | null;
+  end_date: string | null;
+  status: ShareStatus;
+  created_at: string;
+  accepted_at: string | null;
+}
+
 // ---------- Phase 5: 家計簿 ----------
 export interface Expense {
   id: string;

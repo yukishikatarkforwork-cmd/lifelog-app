@@ -90,6 +90,10 @@ export interface NutritionGoals {
 
 export interface UserSettings extends NutritionGoals {
   user_id: string;
+  /** 天気の自動取得に使う位置。未設定なら自動取得は使えない */
+  home_latitude: number | null;
+  home_longitude: number | null;
+  home_label: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -173,13 +177,26 @@ export interface Photo {
   updated_at?: string;
 }
 
+// ---------- Phase 14: リンク ----------
+export interface LinkEntry {
+  id: string;
+  user_id: string;
+  date: string;
+  url: string;
+  title: string | null;
+  memo: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 // ---------- Phase 9: カレンダー共有 ----------
 /** 共有できるカテゴリ。共有はこの単位でしか許可しない */
-export type ShareScope = 'diary' | 'condition' | 'weather' | 'meal' | 'expense' | 'photo';
+export type ShareScope = 'diary' | 'condition' | 'weather' | 'meal' | 'expense' | 'photo' | 'link';
 
 export const SHARE_SCOPE_OPTIONS: Array<{ key: ShareScope; label: string; note?: string }> = [
   { key: 'diary', label: '日記' },
   { key: 'photo', label: '写真' },
+  { key: 'link', label: 'リンク' },
   { key: 'weather', label: '天気・気圧' },
   { key: 'meal', label: '食事・栄養' },
   { key: 'condition', label: '体調・睡眠・服薬', note: 'センシティブ' },

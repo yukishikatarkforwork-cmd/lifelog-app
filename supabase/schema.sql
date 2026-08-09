@@ -739,3 +739,66 @@ as $$
 $$;
 
 grant execute on function public.lifelog_dates(integer) to authenticated;
+
+-- =====================================================================
+-- Phase 12: 天気の自動取得に使う位置情報
+-- 天気サービス（Open-Meteo）は API キー不要なのでブラウザから直接叩く。
+-- ここに置くのは「どこの天気を取るか」だけ。
+-- =====================================================================
+alter table public.user_settings add column if not exists home_latitude  numeric;
+alter table public.user_settings add column if not exists home_longitude numeric;
+alter table public.user_settings add column if not exists home_label     text;
+
+-- =====================================================================
+-- Phase 14: リンク
+-- 日付にURLを紐づける。タイトルは AI 検索の対象になるので保存しておく。
+-- =====================================================================
+create table if not exists public.links (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  date       date not null,
+  url        text not null,
+  title      text,
+  memo       text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists links_user_date_idx on public.links (user_id, date);
+
+drop trigger if exists trg_links_updated on public.links;
+create trigger trg_links_updated before update on public.links
+  for each row execute function public.set_updated_at();
+
+alter table public.links enable row level security;
+
+drop policy if exists "own links" on public.links;
+create policy "own links" on public.links
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "shared link read" on public.links;
+create policy "shared link read" on public.links
+  for select to authenticated using (public.can_view(user_id, 'link', date));
+
+grant select, insert, update, delete on public.links to authenticated;
+
+-- 対象日の列挙にリンクを含める（links は上で作られるので、ここで定義し直す）
+create or replace function public.lifelog_dates(p_limit integer default 2000)
+returns table (date date)
+language sql
+stable
+as $$
+  select d from (
+    select date as d from public.daily_records  where user_id = auth.uid()
+    union select date from public.weather_records where user_id = auth.uid()
+    union select date from public.meal_entries   where user_id = auth.uid()
+    union select date from public.expenses       where user_id = auth.uid()
+    union select date from public.diary_entries  where user_id = auth.uid()
+    union select date from public.photos         where user_id = auth.uid()
+    union select date from public.links          where user_id = auth.uid()
+  ) t
+  order by d desc
+  limit greatest(1, least(p_limit, 5000));
+$$;
+
+grant execute on function public.lifelog_dates(integer) to authenticated;

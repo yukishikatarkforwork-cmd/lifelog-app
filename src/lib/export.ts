@@ -1,4 +1,4 @@
-import type { DailyRecord, DiaryEntry, Expense, MealEntry, MealType, Photo, WeatherRecord } from './types';
+import type { DailyRecord, DiaryEntry, Expense, LinkEntry, MealEntry, MealType, Photo, WeatherRecord } from './types';
 import { MEAL_LABELS, WEATHER_LABELS } from './types';
 import { fmt, sumNutrition } from './nutrition';
 import { formatShort } from './date';
@@ -87,6 +87,7 @@ export interface DailyExportData {
   expenses: Expense[];
   diaries?: DiaryEntry[];
   photos?: Photo[];
+  links?: LinkEntry[];
 }
 
 /** 全ドメインを日別にまとめた統合 Markdown（AI 分析向け） */
@@ -100,8 +101,10 @@ export function toDailyMarkdown(data: DailyExportData, title = '生活記録'): 
   const diaryBy = new Map((data.diaries ?? []).map((d) => [d.date, d]));
   const photoBy = new Map<string, Photo[]>();
   for (const p of data.photos ?? []) { const a = photoBy.get(p.date) ?? []; a.push(p); photoBy.set(p.date, a); }
+  const linkBy = new Map<string, LinkEntry[]>();
+  for (const l of data.links ?? []) { const a = linkBy.get(l.date) ?? []; a.push(l); linkBy.set(l.date, a); }
 
-  const dates = new Set<string>([...mealsBy.keys(), ...condBy.keys(), ...wthBy.keys(), ...expBy.keys(), ...diaryBy.keys(), ...photoBy.keys()]);
+  const dates = new Set<string>([...mealsBy.keys(), ...condBy.keys(), ...wthBy.keys(), ...expBy.keys(), ...diaryBy.keys(), ...photoBy.keys(), ...linkBy.keys()]);
   const sorted = [...dates].sort();
 
   const lines: string[] = [`# ${title}`, ''];
@@ -162,6 +165,15 @@ export function toDailyMarkdown(data: DailyExportData, title = '生活記録'): 
       // 画像そのものは出せないが、キャプションは出来事の記録として役に立つ
       const captions = photos.map((p) => p.caption).filter((c): c is string => Boolean(c && c.trim()));
       lines.push(`**写真**: ${photos.length} 枚${captions.length > 0 ? `（${captions.join(' / ')}）` : ''}`);
+      lines.push('');
+    }
+
+    const links = linkBy.get(date) ?? [];
+    if (links.length > 0) {
+      lines.push('**リンク**:');
+      for (const l of links) {
+        lines.push(`- [${l.title ?? l.url}](${l.url})${l.memo ? ` — ${l.memo}` : ''}`);
+      }
       lines.push('');
     }
 

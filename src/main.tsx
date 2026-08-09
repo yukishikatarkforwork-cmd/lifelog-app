@@ -5,6 +5,7 @@ import './index.css';
 import App from './App.tsx';
 import { AuthProvider } from './context/AuthContext.tsx';
 import { ToastProvider } from './context/ToastContext.tsx';
+import { registerServiceWorker } from './lib/pwa.ts';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -17,3 +18,6 @@ createRoot(document.getElementById('root')!).render(
     </BrowserRouter>
   </StrictMode>,
 );
+
+// ホーム画面から起動できるようにする（本番ビルドのみ）
+registerServiceWorker();

@@ -16,6 +16,7 @@ import ExpensesCard from '../components/ExpensesCard';
 import DiaryCard from '../components/DiaryCard';
 import SimilarDaysCard from '../components/SimilarDaysCard';
 import PhotoCard from '../components/PhotoCard';
+import LinksCard from '../components/LinksCard';
 import { IconCalendar, IconMeals, IconTrash } from '../components/icons';
 
 const entryToInput = (e: MealEntry): MealEntryInput => ({
@@ -226,6 +227,7 @@ export default function TodayPage() {
       <ExpensesCard date={date} />
       <DiaryCard date={date} />
       <PhotoCard date={date} />
+      <LinksCard date={date} />
       <SimilarDaysCard date={date} />
 
       {formOpen && (

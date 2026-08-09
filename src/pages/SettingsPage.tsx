@@ -7,6 +7,8 @@ import type { ExpenseCategory, UserSettings } from '../lib/types';
 import { DEFAULT_EXPENSE_CATEGORIES } from '../lib/types';
 import { reindex } from '../lib/ai';
 import { insertSampleData, sampleDates } from '../lib/sampleData';
+import WeatherSettingsCard from '../components/WeatherSettingsCard';
+import InstallCard from '../components/InstallCard';
 
 export default function SettingsPage() {
   const { user, signOut } = useAuth();
@@ -183,6 +185,10 @@ export default function SettingsPage() {
         <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>食事記録を CSV / Markdown で書き出します（AI 分析・表計算向け）。</p>
         <Link to="/export" className="btn outline full" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>出力画面を開く</Link>
       </div>
+
+      <InstallCard />
+
+      <WeatherSettingsCard />
 
       <div className="card">
         <h2>カレンダー共有</h2>

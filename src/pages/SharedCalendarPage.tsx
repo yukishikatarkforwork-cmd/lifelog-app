@@ -11,6 +11,7 @@ import { MEAL_LABELS, SHARE_SCOPE_LABELS, WEATHER_LABELS } from '../lib/types';
 import { formatDisplay, toDateStr, todayStr } from '../lib/date';
 import { fmt, sumNutrition } from '../lib/nutrition';
 import PhotoCard from '../components/PhotoCard';
+import LinksCard from '../components/LinksCard';
 import { IconShare } from '../components/icons';
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -258,6 +259,7 @@ export default function SharedCalendarPage() {
       )}
 
       {can('photo') && <PhotoCard date={selected} ownerId={ownerId} readOnly />}
+      {can('link') && <LinksCard date={selected} ownerId={ownerId} readOnly />}
 
       <Link to="/share" className="btn outline full" style={{ textDecoration: 'none', textAlign: 'center' }}>
         共有一覧へ戻る

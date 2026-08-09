@@ -19,4 +19,12 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // Service Worker は self / caches などブラウザとは別のグローバルを使う
+    files: ['public/sw.js'],
+    languageOptions: {
+      globals: { ...globals.serviceworker },
+      sourceType: 'script',
+    },
+  },
 ])

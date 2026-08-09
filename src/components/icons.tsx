@@ -69,3 +69,16 @@ export const IconShare = ({ size = 16 }: P) => (
     <line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/>
   </svg>
 );
+export const IconLink = ({ size = 16 }: P) => (
+  <svg {...s(size)}>
+    <path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7"/>
+    <path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7"/>
+  </svg>
+);
+export const IconTrip = ({ size = 16 }: P) => (
+  <svg {...s(size)}>
+    <rect x="2" y="7" width="20" height="14" rx="2"/>
+    <path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/>
+    <line x1="2" y1="13" x2="22" y2="13"/>
+  </svg>
+);

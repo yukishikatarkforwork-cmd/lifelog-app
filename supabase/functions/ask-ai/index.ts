@@ -2,9 +2,9 @@
 // Edge Function: ask-ai
 //
 // 「自分の記録について AI に質問する」機能のサーバー側。
-// ブラウザから Claude を直接叩くと API キーが露出するため、ここを経由する。
+// ブラウザから直接 OpenAI を叩くと API キーが露出するため、ここを経由する。
 //
-//   [React] --JWT--> [ask-ai] --APIキー--> [Claude API]
+//   [React] --JWT--> [ask-ai] --APIキー--> [OpenAI Chat Completions]
 //
 // 質問の経路は3本ある（どれを使うかは期間の指定で決まる。分類器は置かない）。
 //
@@ -19,8 +19,10 @@
 // 集計を 1 に寄せているのは精度のためだけでなく、
 // PostgREST が1リクエスト1000行で打ち切るため。行を取り寄せて数えると
 // 長期間で件数が欠けて平均が静かに狂う。
+//
+// SDK を使わず fetch で直接叩いているのは、埋め込み（_shared/embedding.ts）が
+// 同じ方式で OpenAI を呼んでいるため。依存が増えず、Deno 側のバージョン差にも左右されない。
 // =====================================================================
-import Anthropic from 'npm:@anthropic-ai/sdk@^0.110.0';
 import { createClient } from 'npm:@supabase/supabase-js@^2.107.0';
 import { CORS, json } from '../_shared/cors.ts';
 import { embed, EmbeddingError } from '../_shared/embedding.ts';
@@ -45,7 +47,12 @@ const COMPACT_THRESHOLD_DAYS = 120;
 const TOP_DIARY_CHUNKS = 24;
 const TOP_DAYS = 12;
 
-const MODEL = 'claude-opus-5';
+const CHAT_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
+const MODEL = 'gpt-5.6-luna';
+// 推論の深さとコストのつまみ。推論トークンも出力として課金されるので、
+// 上げるほど1質問あたりの単価が上がる。none / minimal / low / medium / high。
+const REASONING_EFFORT = 'low';
+const MAX_OUTPUT_TOKENS = 16000;
 
 const SYSTEM_PROMPT = `あなたはユーザー本人の生活記録（体調・睡眠・天気気圧・食事・栄養・家計簿・日記）を読んで質問に答えるアシスタントです。日本語で答えてください。
 
@@ -74,8 +81,8 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'POST のみ受け付けます' }, 405);
 
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
-  if (!apiKey) return json({ error: 'サーバーに ANTHROPIC_API_KEY が設定されていません' }, 500);
+  const apiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!apiKey) return json({ error: 'サーバーに OPENAI_API_KEY が設定されていません' }, 500);
 
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) return json({ error: 'ログインが必要です' }, 401);
@@ -210,43 +217,86 @@ Deno.serve(async (req: Request) => {
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }
 
-  const anthropic = new Anthropic({ apiKey });
-
-  // クライアントが接続を切ったら Claude 側の生成も止める
+  // クライアントが接続を切ったら生成も止める
   const abort = new AbortController();
 
-  const stream = anthropic.messages.stream({
-    model: MODEL,
-    // 思考トークンも max_tokens に含まれるので余裕を持たせる
-    max_tokens: 16000,
-    // 回答の深さとコストのつまみ。低くしたい場合は 'medium' / 'low' に下げる
-    output_config: { effort: 'high' },
-    system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: 'user',
-        content:
-          `以下は私の生活記録です。\n\n${context}\n\n---\n\n` +
-          `上の記録をもとに、次の質問に答えてください。\n\n質問: ${question}`,
+  let upstream: Response;
+  try {
+    upstream = await fetch(CHAT_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
       },
-    ],
-  }, { signal: abort.signal });
+      signal: abort.signal,
+      body: JSON.stringify({
+        model: MODEL,
+        max_completion_tokens: MAX_OUTPUT_TOKENS,
+        reasoning_effort: REASONING_EFFORT,
+        stream: true,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content:
+              `以下は私の生活記録です。\n\n${context}\n\n---\n\n` +
+              `上の記録をもとに、次の質問に答えてください。\n\n質問: ${question}`,
+          },
+        ],
+      }),
+    });
+  } catch (e) {
+    return json({ error: e instanceof Error ? e.message : 'AI の呼び出しに失敗しました' }, 502);
+  }
 
-  // 回答はプレーンテキストのストリームで返す（クライアントはそのまま読み進めるだけでよい）
+  if (!upstream.ok || !upstream.body) {
+    const detail = await upstream.text().catch(() => '');
+    return json({ error: `AI の呼び出しに失敗しました (${upstream.status}): ${detail.slice(0, 300)}` }, 502);
+  }
+
+  // 回答はプレーンテキストのストリームで返す（クライアントはそのまま読み進めるだけでよい）。
+  // 上流は SSE なので、data: 行から差分テキストだけを取り出して素通しする。
   const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
   const readable = new ReadableStream({
     async start(controller) {
+      const reader = upstream.body!.getReader();
+      let buffer = '';
+      let finishReason: string | null = null;
       try {
-        for await (const event of stream) {
-          if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-            controller.enqueue(encoder.encode(event.delta.text));
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          // 行単位で処理する。行が途中で切れていた分は buffer に残して次のチャンクで揃える。
+          let nl: number;
+          while ((nl = buffer.indexOf('\n')) !== -1) {
+            const line = buffer.slice(0, nl).trim();
+            buffer = buffer.slice(nl + 1);
+            if (!line.startsWith('data:')) continue;
+
+            const payload = line.slice(5).trim();
+            if (payload === '[DONE]') continue;
+
+            try {
+              const chunk = JSON.parse(payload);
+              const choice = chunk.choices?.[0];
+              const delta = choice?.delta?.content;
+              if (typeof delta === 'string' && delta !== '') {
+                controller.enqueue(encoder.encode(delta));
+              }
+              if (choice?.finish_reason) finishReason = choice.finish_reason;
+            } catch {
+              // 壊れた行は無視する（回答本体を止めるほどの事故ではない）
+            }
           }
         }
-        const final = await stream.finalMessage();
-        if (final.stop_reason === 'refusal') {
-          controller.enqueue(encoder.encode('\n\n[この質問には回答できませんでした]'));
-        } else if (final.stop_reason === 'max_tokens') {
+
+        if (finishReason === 'length') {
           controller.enqueue(encoder.encode('\n\n[回答が長くなりすぎたため途中で終了しました]'));
+        } else if (finishReason === 'content_filter') {
+          controller.enqueue(encoder.encode('\n\n[この質問には回答できませんでした]'));
         }
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);

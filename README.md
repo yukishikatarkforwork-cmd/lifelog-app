@@ -116,7 +116,7 @@
 | ルーティング | react-router-dom |
 | グラフ | recharts |
 | バックエンド | Supabase（Auth / PostgreSQL / RLS / Edge Functions） |
-| AI | Claude API（`claude-opus-5`）を Supabase Edge Function 経由で利用 |
+| AI | OpenAI Chat Completions（`gpt-5.6-luna`）を Supabase Edge Function 経由で利用 |
 | ベクトル検索 | pgvector（Supabase 標準）+ OpenAI `text-embedding-3-small`（512次元） |
 | 画像 | Supabase Storage（private バケット）+ ブラウザ側で WebP 圧縮 |
 | 天気 | Open-Meteo（APIキー不要・CORS許可のためブラウザから直接） |
@@ -167,8 +167,7 @@ VITE_SUPABASE_ANON_KEY=eyJhbGci...
 この機能だけ Supabase Edge Function を使う。**設定しなくてもアプリの他の機能は動く**（AI 画面だけがエラーになる）。
 
 1. API キーを発行する
-   - <https://console.anthropic.com> … 回答生成用（必須）
-   - <https://platform.openai.com> … 埋め込み生成用（全期間検索と「似た日」を使う場合のみ）
+   - <https://platform.openai.com/api-keys> … **これ1本だけ**。回答生成・旅程の下書き・埋め込み生成のすべてに使う
 
 2. Supabase CLI をインストールし、プロジェクトにリンクする
 
@@ -181,8 +180,7 @@ VITE_SUPABASE_ANON_KEY=eyJhbGci...
 3. API キーを **Edge Function のシークレット** として登録する
 
    ```bash
-   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
-   supabase secrets set OPENAI_API_KEY=sk-...      # ベクトル検索を使う場合
+   supabase secrets set OPENAI_API_KEY=sk-...
    ```
 
    > ⚠️ **`.env` の `VITE_` 変数には絶対に入れないこと。** `VITE_` 接頭辞の値はビルド結果に埋め込まれ、
@@ -203,19 +201,27 @@ VITE_SUPABASE_ANON_KEY=eyJhbGci...
 
 `SUPABASE_URL` と `SUPABASE_ANON_KEY` は Edge Function の実行環境に自動で入るため、設定は不要。
 
-> 💡 **埋め込みプロバイダの差し替え**：`supabase/functions/_shared/embedding.ts` の `embed()` だけを
-> 書き換えれば、Voyage AI などに変更できる。次元数を変える場合は `schema.sql` の `vector(512)` も合わせること。
+> 💡 **プロバイダの差し替え**：生成は `ask-ai` / `draft-trip` の先頭定数、埋め込みは
+> `supabase/functions/_shared/embedding.ts` の `embed()` だけを書き換えれば替えられる。
+> どの関数も SDK を使わず `fetch` で直接叩いているので、依存を増やさずに差し替えられる。
+> 埋め込みの次元数を変える場合は `schema.sql` の `vector(512)` も合わせること。
 
 **コストのつまみ**（[`supabase/functions/ask-ai/index.ts`](supabase/functions/ask-ai/index.ts) の先頭）:
 
 | 定数 | 既定値 | 意味 |
 |---|---|---|
+| `MODEL` | `gpt-5.6-luna` | 回答生成のモデル。品質が足りなければ `gpt-5.6-terra` に上げる（単価は約10倍） |
+| `REASONING_EFFORT` | `low` | 推論の深さ。推論トークンも出力として課金されるので、上げるほど単価が上がる |
 | `DAILY_LIMIT` | 20 | 1ユーザーあたり 1日の質問回数 |
-| `MAX_RANGE_DAYS` | 400 | 1回で扱える最大日数 |
+| `MAX_RANGE_DAYS` | 400 | 1回で扱える最大日数。長期間ほど入力トークンが増えるので、ここが実質の上限単価を決める |
 | `COMPACT_THRESHOLD_DAYS` | 120 | これを超える期間は構造化データを1日1行に圧縮（日記は常に全文） |
-| `output_config.effort` | `high` | 回答の作り込み度。`medium` / `low` に下げるとコストと待ち時間が減る |
 | `TOP_DIARY_CHUNKS` | 24 | 全期間モードで拾う日記チャンク数 |
 | `TOP_DAYS` | 12 | 全期間モードで拾う日別要約の数 |
+
+**なぜこのモデルなのか**：このアプリは平均・合計・相関を `lifelog_stats()` の SQL 側で確定させ、
+該当日の絞り込みも pgvector に任せている。モデルに残る仕事は「渡された Markdown を読んで、
+日本語で、日付を添えて答える」だけなので、小型モデルで足りる。`gpt-5.6-luna` は
+1.05M トークンのコンテキストを持つため、`MAX_RANGE_DAYS` を削らずに最安ティアを使える。
 
 ### 5. 開発サーバー起動
 
@@ -289,7 +295,8 @@ npx playwright test --ui    # UI モードで対話的に実行
 「先月の平均体調は？」を検索で拾った数日から答えると間違える。数値は SQL 側で確定させる。
 
 **なぜ全部を全文投入にしないか**：期間に比例してコストが増える。
-1年分だと1回あたり約 $0.35 かかるが、ベクトル検索なら期間によらず約 $0.035 で済む。
+1年分だと入力が約70Kトークンまで膨らむのに対し、ベクトル検索なら期間によらず約7Kトークンで済む。
+入力が10分の1になるので、記録が何年ぶんあっても1質問あたりの単価が上がらない。
 
 **なぜ短期間は全文投入のままなのか**：30日ぶんは約9Kトークン、ベクトル検索は約7Kトークンで、
 **コストがほぼ変わらない**。それなら取りこぼしのない全文投入のほうがよい。
@@ -408,7 +415,7 @@ DBトリガにしなかったのは、日別要約が体調・天気・食事・
 | **Phase 5** | 家計簿（支出・カテゴリ・支払方法、カテゴリ別グラフ） | ✅ 完了 |
 | **Phase 6** | 統合ダッシュボード・CSV/Markdown 出力 | ✅ 完了 |
 | **Phase 7** | 日記（本文・タグ・検索・カレンダー連携・Markdown 同梱） | ✅ 完了 |
-| **Phase 10** | AI に聞く（Edge Function + Claude API、ストリーミング） | ✅ 完了 |
+| **Phase 10** | AI に聞く（Edge Function + OpenAI API、ストリーミング） | ✅ 完了 |
 | **Phase 11** | ベクトル検索（pgvector・全期間モード・似た日・SQL集計との併用） | ✅ 完了 |
 | **Phase 8** | 写真（Storage・クライアント側圧縮・署名付きURL・キャプション） | ✅ 完了 |
 | **Phase 9** | カレンダー共有（ユーザー間招待・範囲/期間指定・読み取り専用） | ✅ 完了 |

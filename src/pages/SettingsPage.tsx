@@ -6,6 +6,7 @@ import { parseNum } from '../lib/nutrition';
 import type { ExpenseCategory, UserSettings } from '../lib/types';
 import { DEFAULT_EXPENSE_CATEGORIES } from '../lib/types';
 import { reindex } from '../lib/ai';
+import { deleteAllPhotos } from '../lib/photos';
 import { insertSampleData, sampleDates } from '../lib/sampleData';
 import WeatherSettingsCard from '../components/WeatherSettingsCard';
 import InstallCard from '../components/InstallCard';
@@ -29,6 +30,9 @@ export default function SettingsPage() {
   // AI 検索インデックス
   const [indexing, setIndexing] = useState(false);
   const [seeding, setSeeding] = useState(false);
+
+  // 全データ削除のあと、自前で設定を読み込むカードを作り直すためのキー
+  const [resetKey, setResetKey] = useState(0);
 
   const loadCats = async () => {
     const { data } = await supabase.from('expense_categories').select('*').order('created_at');
@@ -91,14 +95,40 @@ export default function SettingsPage() {
 
   const deleteAllData = async () => {
     if (!user) return;
-    if (!confirm('すべての食事記録・テンプレートを削除します。元に戻せません。よろしいですか？')) return;
+    if (!confirm(
+      '体調・食事・天気気圧・家計簿・日記・写真・リンク・旅のしおり・テンプレート・栄養目標・共有設定を含む、'
+      + 'すべての記録を削除します。元に戻せません。よろしいですか？',
+    )) return;
     setErr('');
     setMsg('');
-    const r1 = await supabase.from('meal_entries').delete().eq('user_id', user.id);
-    const r2 = await supabase.from('meal_templates').delete().eq('user_id', user.id);
-    const r3 = await supabase.from('food_templates').delete().eq('user_id', user.id);
-    const e = r1.error || r2.error || r3.error;
-    if (e) { setErr(e.message); return; }
+    // 自分のデータを持つ全テーブルを対象に削除する（取りこぼしがあると「全削除」の表記と矛盾するため）。
+    // trip_items / trip_checklist は trips の cascade で消える。ai_usage は利用上限の集計なので残す。
+    const results = await Promise.all([
+      supabase.from('meal_entries').delete().eq('user_id', user.id),
+      supabase.from('meal_templates').delete().eq('user_id', user.id),
+      supabase.from('food_templates').delete().eq('user_id', user.id),
+      supabase.from('daily_records').delete().eq('user_id', user.id),
+      supabase.from('weather_records').delete().eq('user_id', user.id),
+      supabase.from('expenses').delete().eq('user_id', user.id),
+      supabase.from('expense_categories').delete().eq('user_id', user.id),
+      supabase.from('diary_entries').delete().eq('user_id', user.id),
+      supabase.from('links').delete().eq('user_id', user.id),
+      supabase.from('trips').delete().eq('user_id', user.id),
+      supabase.from('embeddings').delete().eq('user_id', user.id),
+      supabase.from('shares').delete().eq('owner_id', user.id),
+      supabase.from('user_settings').delete().eq('user_id', user.id),
+    ]);
+    let e = results.find((r) => r.error)?.error?.message;
+    try {
+      await deleteAllPhotos(user.id);
+    } catch (photoErr) {
+      e ??= photoErr instanceof Error ? photoErr.message : '写真の削除に失敗しました';
+    }
+    if (e) { setErr(e); return; }
+    setCustomCats([]);
+    setCal(''); setPro(''); setFat(''); setCarb('');
+    // 自宅の位置も user_settings ごと消えたので、天気設定カードを読み直させる
+    setResetKey((k) => k + 1);
     setMsg('すべてのデータを削除しました。');
   };
 
@@ -194,7 +224,7 @@ export default function SettingsPage() {
 
       <InstallCard />
 
-      <WeatherSettingsCard />
+      <WeatherSettingsCard key={resetKey} />
 
       <div className="card">
         <h2>カレンダー共有</h2>
@@ -267,7 +297,7 @@ export default function SettingsPage() {
       <div className="card">
         <h2>データ削除</h2>
         <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-          記録・テンプレートをすべて削除します。アカウント自体の削除はサポートへの依頼が必要です（後続フェーズで対応予定）。
+          記録・写真・テンプレート・各種設定をすべて削除します。アカウント自体の削除はサポートへの依頼が必要です（後続フェーズで対応予定）。
         </p>
         <button className="btn danger outline full" onClick={deleteAllData}>すべてのデータを削除</button>
       </div>

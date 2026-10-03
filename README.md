@@ -139,9 +139,11 @@ npm install
 ### 2. Supabase プロジェクト作成
 
 1. <https://supabase.com> でプロジェクトを作成
-2. **SQL Editor** で [`supabase/schema.sql`](supabase/schema.sql) を貼り付けて実行（テーブル・RLS・トリガを作成）
+2. **SQL Editor** で [`supabase/schema.sql`](supabase/schema.sql) を貼り付けて実行（テーブル・RLS・トリガ・CHECK 制約を作成）
    - すべて `create table if not exists` / `create or replace` なので、**既存プロジェクトでも再実行して問題ない**。
      機能を追加するたびにテーブルや関数が増えるので、更新時はもう一度実行すること。
+   - ただし CHECK 制約は `create table` の中に書いているため、**既存のテーブルには再実行しても付かない**。
+     すでに DB を構築済みの場合は、[`supabase/migrations/`](supabase/migrations) 内の SQL を番号順に実行して追加する（冪等・再実行可）。
    - このスクリプトは pgvector の有効化、写真用の `photos` バケット作成、Storage のポリシー設定まで行う。
      Storage の設定を含むため、**ダッシュボードの SQL Editor から実行**すること（権限が足りないと弾かれる）。
 3. **Project Settings > API** から `Project URL` と `anon public` キーを取得

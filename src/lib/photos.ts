@@ -69,6 +69,25 @@ export async function deletePhoto(photo: Photo): Promise<void> {
   await supabase.storage.from(PHOTO_BUCKET).remove([photo.storage_path]);
 }
 
+/** 全削除で一度に扱う枚数。id を URL に並べるので大きくしすぎない */
+const DELETE_BATCH = 100;
+
+/** 自分の写真をすべて削除する（設定の「すべてのデータを削除」用）。実体と行の両方を消す */
+export async function deleteAllPhotos(userId: string): Promise<void> {
+  for (;;) {
+    // 共有されている他人の写真も RLS 上は見えるので、必ず user_id で絞る
+    const { data, error } = await supabase
+      .from('photos').select('id,storage_path').eq('user_id', userId).limit(DELETE_BATCH);
+    if (error) throw new Error(error.message);
+    const batch = (data as Pick<Photo, 'id' | 'storage_path'>[]) ?? [];
+    if (batch.length === 0) return;
+
+    const { error: rowErr } = await supabase.from('photos').delete().in('id', batch.map((p) => p.id));
+    if (rowErr) throw new Error(rowErr.message);
+    await supabase.storage.from(PHOTO_BUCKET).remove(batch.map((p) => p.storage_path));
+  }
+}
+
 /** キャプションを更新する。AI 検索の手がかりになるので入力を促したい */
 export async function updateCaption(id: string, caption: string): Promise<void> {
   const { error } = await supabase

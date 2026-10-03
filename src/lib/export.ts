@@ -1,4 +1,4 @@
-import type { DailyRecord, DiaryEntry, Expense, LinkEntry, MealEntry, MealType, Photo, WeatherRecord } from './types';
+import type { BodyRecord, DailyRecord, DiaryEntry, Expense, LinkEntry, MealEntry, MealType, Photo, WeatherRecord } from './types';
 import { MEAL_LABELS, WEATHER_LABELS } from './types';
 import { fmt, sumNutrition } from './nutrition';
 import { formatShort } from './date';
@@ -88,6 +88,28 @@ export interface DailyExportData {
   diaries?: DiaryEntry[];
   photos?: Photo[];
   links?: LinkEntry[];
+  bodies?: BodyRecord[];
+}
+
+/** 体重・体組成の CSV */
+const BODY_HEADER = ['date', 'weight_kg', 'body_fat_pct', 'muscle_kg', 'visceral_fat_level', 'basal_metabolism_kcal', 'body_age', 'bone_kg', 'measured_at', 'source'];
+export function toBodyCSV(bodies: BodyRecord[]): string {
+  const rows = bodies.map((b) => [
+    b.date, b.weight_kg ?? '', b.body_fat_pct ?? '', b.muscle_kg ?? '', b.visceral_fat_level ?? '',
+    b.basal_metabolism_kcal ?? '', b.body_age ?? '', b.bone_kg ?? '', b.measured_at ?? '', b.source,
+  ]);
+  return [BODY_HEADER, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n');
+}
+
+/** 体重・体組成を1行にまとめる（Markdown と AI 向け）。値が何もなければ null */
+export function formatBodyLine(b: BodyRecord): string | null {
+  const parts: string[] = [];
+  if (b.weight_kg != null) parts.push(`体重 ${fmt(b.weight_kg)}kg`);
+  if (b.body_fat_pct != null) parts.push(`体脂肪率 ${fmt(b.body_fat_pct)}%`);
+  if (b.muscle_kg != null) parts.push(`筋肉量 ${fmt(b.muscle_kg)}kg`);
+  if (b.visceral_fat_level != null) parts.push(`内臓脂肪レベル ${fmt(b.visceral_fat_level)}`);
+  if (b.basal_metabolism_kcal != null) parts.push(`基礎代謝 ${fmt(b.basal_metabolism_kcal)}kcal`);
+  return parts.length > 0 ? parts.join(' / ') : null;
 }
 
 /** 全ドメインを日別にまとめた統合 Markdown（AI 分析向け） */
@@ -103,8 +125,9 @@ export function toDailyMarkdown(data: DailyExportData, title = '生活記録'): 
   for (const p of data.photos ?? []) { const a = photoBy.get(p.date) ?? []; a.push(p); photoBy.set(p.date, a); }
   const linkBy = new Map<string, LinkEntry[]>();
   for (const l of data.links ?? []) { const a = linkBy.get(l.date) ?? []; a.push(l); linkBy.set(l.date, a); }
+  const bodyBy = new Map((data.bodies ?? []).map((b) => [b.date, b]));
 
-  const dates = new Set<string>([...mealsBy.keys(), ...condBy.keys(), ...wthBy.keys(), ...expBy.keys(), ...diaryBy.keys(), ...photoBy.keys(), ...linkBy.keys()]);
+  const dates = new Set<string>([...mealsBy.keys(), ...condBy.keys(), ...wthBy.keys(), ...expBy.keys(), ...diaryBy.keys(), ...photoBy.keys(), ...linkBy.keys(), ...bodyBy.keys()]);
   const sorted = [...dates].sort();
 
   const lines: string[] = [`# ${title}`, ''];
@@ -125,6 +148,10 @@ export function toDailyMarkdown(data: DailyExportData, title = '生活記録'): 
       if (c.memo) lines.push(`メモ: ${c.memo.replace(/\n/g, ' ')}`);
       lines.push('');
     }
+
+    const b = bodyBy.get(date);
+    const bodyLine = b ? formatBodyLine(b) : null;
+    if (bodyLine) lines.push(`**体重**: ${bodyLine}`, '');
 
     const w = wthBy.get(date);
     if (w && (w.weather || w.pressure_hpa != null || w.temperature != null || w.humidity != null)) {

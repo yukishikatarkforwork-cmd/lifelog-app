@@ -18,6 +18,7 @@ const TripsPage = lazy(() => import('./pages/TripsPage'));
 const TripDetailPage = lazy(() => import('./pages/TripDetailPage'));
 const SharePage = lazy(() => import('./pages/SharePage'));
 const SharedCalendarPage = lazy(() => import('./pages/SharedCalendarPage'));
+const HealthPlanetCallbackPage = lazy(() => import('./pages/HealthPlanetCallbackPage'));
 
 const Loading = () => <div className="spinner-wrap">読み込み中…</div>;
 
@@ -59,6 +60,7 @@ export default function App() {
           <Route path="/shared/:ownerId" element={<SharedCalendarPage />} />
           <Route path="/export" element={<ExportPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/healthplanet" element={<HealthPlanetCallbackPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

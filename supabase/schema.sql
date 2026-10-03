@@ -435,6 +435,10 @@ as $$
     select count(*) as n from public.diary_entries
     where user_id = auth.uid() and date between p_start and p_end
   ),
+  body as (
+    select * from public.body_records
+    where user_id = auth.uid() and date between p_start and p_end and weight_kg is not null
+  ),
   -- corr(Y, X) がピアソン相関係数。2点未満や分散0なら null が返る
   corr_pressure as (
     select corr(c.condition_score, w.pressure_hpa) as r, count(*) as n
@@ -468,6 +472,14 @@ as $$
                           'category', category, 'total', total, 'count', n)), '[]'::json) from exp_cat)
       ),
     'diary_count', (select n from diary),
+    -- 体重は「期間の最初と最後」を渡す。平均だけだと増減の向きが分からない
+    'body', json_build_object(
+        'days',         (select count(*) from body),
+        'avg_weight',   (select avg(weight_kg) from body),
+        'first_weight', (select weight_kg from body order by date asc  limit 1),
+        'last_weight',  (select weight_kg from body order by date desc limit 1),
+        'avg_body_fat', (select avg(body_fat_pct) from body)
+      ),
     'correlation', json_build_object(
         'pressure_condition', json_build_object('r', (select r from corr_pressure), 'n', (select n from corr_pressure)),
         'sleep_condition',    json_build_object('r', (select r from corr_sleep),    'n', (select n from corr_sleep))
@@ -949,3 +961,94 @@ as $$
 $$;
 
 grant execute on function public.trip_actual_cost(uuid) to authenticated;
+
+-- =====================================================================
+-- Phase 16: 体重・体組成（手入力 + タニタ Health Planet 連携）
+--
+-- 体重は「毎朝の1回」が単位なので、体調と同じ user × date で1行にする。
+-- 体組成計（タニタ）は1日に何度も乗ることがあるが、その日の最初の測定を採用する
+-- （朝イチの条件が揃った値どうしでないと日々の比較にならない）。
+--
+-- source … 'manual'（手入力）か 'healthplanet'（同期）か。
+--          同期は手入力した日を上書きしない（手で直した値を潰さないため）。
+-- =====================================================================
+create table if not exists public.body_records (
+  user_id               uuid not null references auth.users (id) on delete cascade,
+  date                  date not null,
+  weight_kg             numeric,
+  body_fat_pct          numeric,
+  muscle_kg             numeric,
+  visceral_fat_level    numeric,
+  basal_metabolism_kcal numeric,
+  body_age              numeric,
+  bone_kg               numeric,
+  measured_at           timestamptz,
+  source                text not null default 'manual' check (source in ('manual', 'healthplanet')),
+  memo                  text,
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now(),
+  primary key (user_id, date),
+  constraint body_records_range check (
+    (weight_kg is null or (weight_kg > 0 and weight_kg < 500))
+    and (body_fat_pct is null or (body_fat_pct >= 0 and body_fat_pct <= 100))
+    and (muscle_kg is null or muscle_kg >= 0)
+    and (basal_metabolism_kcal is null or basal_metabolism_kcal >= 0)
+  )
+);
+
+drop trigger if exists trg_body_records_updated on public.body_records;
+create trigger trg_body_records_updated before update on public.body_records
+  for each row execute function public.set_updated_at();
+
+alter table public.body_records enable row level security;
+
+drop policy if exists "own body_records" on public.body_records;
+create policy "own body_records" on public.body_records
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+grant select, insert, update, delete on public.body_records to authenticated;
+
+-- ---------------------------------------------------------------------
+-- Health Planet の OAuth トークン
+--
+-- アクセストークンはユーザー本人のブラウザにも見せない。
+-- このテーブルには RLS ポリシーも grant も付けず、Edge Function（service role）だけが触る。
+-- 画面に出す「連携済みかどうか」は下の healthplanet_status() 経由で、トークン抜きで返す。
+-- ---------------------------------------------------------------------
+create table if not exists public.healthplanet_tokens (
+  user_id        uuid primary key references auth.users (id) on delete cascade,
+  access_token   text not null,
+  refresh_token  text,
+  expires_at     timestamptz not null,
+  scope          text,
+  -- 認可時に使った redirect_uri。トークン更新時にも同じ値を要求されるので控えておく
+  redirect_uri   text,
+  connected_at   timestamptz not null default now(),
+  last_synced_at timestamptz,
+  last_error     text,
+  updated_at     timestamptz not null default now()
+);
+
+drop trigger if exists trg_healthplanet_tokens_updated on public.healthplanet_tokens;
+create trigger trg_healthplanet_tokens_updated before update on public.healthplanet_tokens
+  for each row execute function public.set_updated_at();
+
+alter table public.healthplanet_tokens enable row level security;
+-- ポリシーを一切作らない＝anon/authenticated からは読めない・書けない（service role は RLS を通らない）
+revoke all on public.healthplanet_tokens from anon, authenticated;
+
+-- 連携状態（トークンを含まない）。security definer で tokens を読み、本人の分だけ返す
+create or replace function public.healthplanet_status()
+returns table (connected boolean, connected_at timestamptz, last_synced_at timestamptz, last_error text, token_expires_at timestamptz)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select true, t.connected_at, t.last_synced_at, t.last_error, t.expires_at
+  from public.healthplanet_tokens t
+  where t.user_id = auth.uid();
+$$;
+
+revoke execute on function public.healthplanet_status() from public, anon;
+grant execute on function public.healthplanet_status() to authenticated;

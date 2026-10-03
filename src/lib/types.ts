@@ -119,6 +119,37 @@ export interface DailyRecord {
   updated_at?: string;
 }
 
+// ---------- Phase 16: 体重・体組成 ----------
+export type BodyRecordSource = 'manual' | 'healthplanet';
+
+/** 体重・体組成（1日1件）。手入力かタニタ Health Planet からの同期 */
+export interface BodyRecord {
+  user_id: string;
+  date: string;
+  weight_kg: number | null;
+  body_fat_pct: number | null;
+  muscle_kg: number | null;
+  visceral_fat_level: number | null;
+  basal_metabolism_kcal: number | null;
+  body_age: number | null;
+  bone_kg: number | null;
+  /** 測定時刻（同期した記録のみ） */
+  measured_at: string | null;
+  source: BodyRecordSource;
+  memo: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Health Planet の連携状態（トークンは含まない） */
+export interface HealthPlanetStatus {
+  connected: boolean;
+  connected_at: string | null;
+  last_synced_at: string | null;
+  last_error: string | null;
+  token_expires_at: string | null;
+}
+
 // ---------- Phase 4: 天気・気圧 ----------
 export type WeatherKey = 'sunny' | 'cloudy' | 'rainy' | 'snowy' | 'other';
 

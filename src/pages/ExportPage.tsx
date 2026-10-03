@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import type { DailyRecord, DiaryEntry, Expense, LinkEntry, MealEntry, Photo, WeatherRecord } from '../lib/types';
+import type { BodyRecord, DailyRecord, DiaryEntry, Expense, LinkEntry, MealEntry, Photo, WeatherRecord } from '../lib/types';
 import { addDays, todayStr } from '../lib/date';
-import { toCSV, toExpensesCSV, toDailyMarkdown } from '../lib/export';
+import { toBodyCSV, toCSV, toExpensesCSV, toDailyMarkdown } from '../lib/export';
 import { useReload } from '../lib/useReload';
 
 // Excel が UTF-8 の日本語を正しく開けるよう先頭に付ける BOM マーカー
@@ -30,6 +30,7 @@ export default function ExportPage() {
   const [diaries, setDiaries] = useState<DiaryEntry[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [links, setLinks] = useState<LinkEntry[]>([]);
+  const [bodies, setBodies] = useState<BodyRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
@@ -37,7 +38,7 @@ export default function ExportPage() {
   useReload(async () => {
     setLoading(true);
     setError('');
-    const [m, c, w, e, d, p, l] = await Promise.all([
+    const [m, c, w, e, d, p, l, b] = await Promise.all([
       supabase.from('meal_entries').select('*').gte('date', start).lte('date', end).order('date').order('created_at'),
       supabase.from('daily_records').select('*').gte('date', start).lte('date', end),
       supabase.from('weather_records').select('*').gte('date', start).lte('date', end),
@@ -45,8 +46,9 @@ export default function ExportPage() {
       supabase.from('diary_entries').select('*').gte('date', start).lte('date', end).order('date'),
       supabase.from('photos').select('*').gte('date', start).lte('date', end).order('date'),
       supabase.from('links').select('*').gte('date', start).lte('date', end).order('date'),
+      supabase.from('body_records').select('*').gte('date', start).lte('date', end).order('date'),
     ]);
-    const err = m.error || c.error || w.error || e.error || d.error || p.error || l.error;
+    const err = m.error || c.error || w.error || e.error || d.error || p.error || l.error || b.error;
     if (err) setError(err.message);
     setMeals((m.data as MealEntry[]) ?? []);
     setConditions((c.data as DailyRecord[]) ?? []);
@@ -55,16 +57,17 @@ export default function ExportPage() {
     setDiaries((d.data as DiaryEntry[]) ?? []);
     setPhotos((p.data as Photo[]) ?? []);
     setLinks((l.data as LinkEntry[]) ?? []);
+    setBodies((b.data as BodyRecord[]) ?? []);
     setLoading(false);
   }, [start, end]);
 
   const title = `生活記録 ${start} 〜 ${end}`;
   const md = useMemo(
-    () => toDailyMarkdown({ meals, conditions, weathers, expenses, diaries, photos, links }, title),
-    [meals, conditions, weathers, expenses, diaries, photos, links, title],
+    () => toDailyMarkdown({ meals, conditions, weathers, expenses, diaries, photos, links, bodies }, title),
+    [meals, conditions, weathers, expenses, diaries, photos, links, bodies, title],
   );
 
-  const hasAny = meals.length + conditions.length + weathers.length + expenses.length + diaries.length + photos.length + links.length > 0;
+  const hasAny = meals.length + conditions.length + weathers.length + expenses.length + diaries.length + photos.length + links.length + bodies.length > 0;
 
   const onCopy = async () => {
     try {
@@ -92,7 +95,7 @@ export default function ExportPage() {
           </div>
         </div>
         <div className="muted" style={{ fontSize: 13 }}>
-          {loading ? '読み込み中…' : `食事 ${meals.length} / 体調 ${conditions.length} / 天気 ${weathers.length} / 支出 ${expenses.length} / 日記 ${diaries.length} / 写真 ${photos.length} / リンク ${links.length} 件`}
+          {loading ? '読み込み中…' : `食事 ${meals.length} / 体調 ${conditions.length} / 体重 ${bodies.length} / 天気 ${weathers.length} / 支出 ${expenses.length} / 日記 ${diaries.length} / 写真 ${photos.length} / リンク ${links.length} 件`}
         </div>
       </div>
 
@@ -100,7 +103,7 @@ export default function ExportPage() {
 
       <div className="card">
         <h2>統合 Markdown（AI 分析向け）</h2>
-        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>体調・天気気圧・食事・家計簿・日記・写真のキャプション・リンクを日別にまとめます。</p>
+        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>体調・体重・天気気圧・食事・家計簿・日記・写真のキャプション・リンクを日別にまとめます。</p>
         <div className="stack-sm">
           <button className="btn full" disabled={!hasAny} onClick={() => download(`lifelog-${start}_${end}.md`, md, 'text/markdown;charset=utf-8')}>
             Markdown をダウンロード
@@ -119,6 +122,9 @@ export default function ExportPage() {
           </button>
           <button className="btn outline full" disabled={expenses.length === 0} onClick={() => download(`lifelog-expenses-${start}_${end}.csv`, toExpensesCSV(expenses), 'text/csv;charset=utf-8', true)}>
             家計簿 CSV
+          </button>
+          <button className="btn outline full" disabled={bodies.length === 0} onClick={() => download(`lifelog-body-${start}_${end}.csv`, toBodyCSV(bodies), 'text/csv;charset=utf-8', true)}>
+            体重・体組成 CSV
           </button>
         </div>
       </div>

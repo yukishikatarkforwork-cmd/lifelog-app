@@ -4,7 +4,7 @@ import {
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { supabase } from '../lib/supabase';
-import type { DailyRecord, Expense, MealEntry, WeatherRecord } from '../lib/types';
+import type { BodyRecord, DailyRecord, Expense, MealEntry, WeatherRecord } from '../lib/types';
 import { addDays, formatShort, todayStr } from '../lib/date';
 import { pfcKcal, sumNutrition } from '../lib/nutrition';
 import { correlationLabel, mean, pearson } from '../lib/analysis';
@@ -14,7 +14,7 @@ const RANGES = [
   { days: 14, label: '14日' },
   { days: 30, label: '30日' },
 ];
-const COLORS = { protein: '#e07070', fat: '#c4954a', carb: '#6baac0', kcal: '#e9a94d', condition: '#2f8f6b', pressure: '#6baac0' };
+const COLORS = { protein: '#e07070', fat: '#c4954a', carb: '#6baac0', kcal: '#e9a94d', condition: '#2f8f6b', pressure: '#6baac0', weight: '#2f8f6b', bodyFat: '#e9a94d' };
 const CAT_PALETTE = ['#2f8f6b', '#6baac0', '#e9a94d', '#e07070', '#7ab5a0', '#c4954a', '#8fa8b8', '#a3a3a3'];
 
 export default function GraphPage() {
@@ -23,6 +23,7 @@ export default function GraphPage() {
   const [conditions, setConditions] = useState<DailyRecord[]>([]);
   const [weathers, setWeathers] = useState<WeatherRecord[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [bodies, setBodies] = useState<BodyRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -33,18 +34,20 @@ export default function GraphPage() {
       setLoading(true);
       setError('');
       const today = todayStr();
-      const [m, c, w, e] = await Promise.all([
+      const [m, c, w, e, b] = await Promise.all([
         supabase.from('meal_entries').select('*').gte('date', start).lte('date', today),
         supabase.from('daily_records').select('*').gte('date', start).lte('date', today),
         supabase.from('weather_records').select('*').gte('date', start).lte('date', today),
         supabase.from('expenses').select('*').gte('date', start).lte('date', today),
+        supabase.from('body_records').select('*').gte('date', start).lte('date', today).order('date'),
       ]);
-      const err = m.error || c.error || w.error || e.error;
+      const err = m.error || c.error || w.error || e.error || b.error;
       if (err) setError(err.message);
       setMeals((m.data as MealEntry[]) ?? []);
       setConditions((c.data as DailyRecord[]) ?? []);
       setWeathers((w.data as WeatherRecord[]) ?? []);
       setExpenses((e.data as Expense[]) ?? []);
+      setBodies((b.data as BodyRecord[]) ?? []);
       setLoading(false);
     })();
   }, [start]);
@@ -78,6 +81,26 @@ export default function GraphPage() {
     return out;
   }, [conditions, weathers, start, days]);
   const hasCondPress = conditions.length > 0 || weathers.length > 0;
+
+  // 体重・体脂肪率: 日別（記録のない日は欠損にして線をつなぐ）
+  const bodyTrend = useMemo(() => {
+    const map = new Map(bodies.map((r) => [r.date, r]));
+    const out = [];
+    for (let i = 0; i < days; i++) {
+      const d = addDays(start, i);
+      const r = map.get(d);
+      out.push({ date: formatShort(d), weight: r?.weight_kg ?? null, bodyFat: r?.body_fat_pct ?? null });
+    }
+    return out;
+  }, [bodies, start, days]);
+  const bodySummary = useMemo(() => {
+    const ws = bodies.filter((r) => r.weight_kg != null);
+    if (ws.length === 0) return null;
+    const first = ws[0].weight_kg!;
+    const last = ws[ws.length - 1].weight_kg!;
+    return { latest: last, delta: Math.round((last - first) * 10) / 10, days: ws.length };
+  }, [bodies]);
+  const hasBodyFat = bodies.some((r) => r.body_fat_pct != null);
 
   // 支出: カテゴリ別集計
   const byCategory = useMemo(() => {
@@ -186,6 +209,12 @@ export default function GraphPage() {
                 { label: '平均睡眠', value: analysis.avgSleep != null ? `${analysis.avgSleep} h` : '—' },
                 { label: '平均摂取カロリー', value: analysis.avgKcal != null ? `${analysis.avgKcal} kcal` : '—' },
                 { label: '平均支出/日', value: analysis.avgExpense != null ? `¥${analysis.avgExpense.toLocaleString()}` : '—' },
+                {
+                  label: '体重（期間の増減）',
+                  value: bodySummary
+                    ? `${bodySummary.latest.toFixed(1)} kg（${bodySummary.delta > 0 ? '+' : ''}${bodySummary.delta.toFixed(1)}）`
+                    : '—',
+                },
               ].map((s) => (
                 <div key={s.label} style={{ background: 'var(--fill-2)', borderRadius: 10, padding: '10px 12px' }}>
                   <div className="muted" style={{ fontSize: 11 }}>{s.label}</div>
@@ -249,6 +278,27 @@ export default function GraphPage() {
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                   <Line yAxisId="left" type="monotone" dataKey="condition" name="体調(1-5)" stroke={COLORS.condition} strokeWidth={2} connectNulls dot={{ r: 2 }} />
                   <Line yAxisId="right" type="monotone" dataKey="pressure" name="気圧(hPa)" stroke={COLORS.pressure} strokeWidth={2} connectNulls dot={{ r: 2 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          {/* 体重・体脂肪率 */}
+          <div className="card">
+            <h2>体重 {bodySummary && <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>{bodySummary.days} 日分</span>}</h2>
+            {bodies.length === 0 ? (
+              <div className="muted" style={{ fontSize: 13 }}>体重の記録がありません。「今日」画面で入力するか、設定で Health Planet と連携してください。</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={210}>
+                <LineChart data={bodyTrend} margin={{ top: 5, right: 4, left: -12, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                  <YAxis yAxisId="left" domain={['auto', 'auto']} tick={{ fontSize: 10 }} width={40} />
+                  {hasBodyFat && <YAxis yAxisId="right" orientation="right" domain={['auto', 'auto']} tick={{ fontSize: 10 }} width={32} />}
+                  <Tooltip />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Line yAxisId="left" type="monotone" dataKey="weight" name="体重(kg)" stroke={COLORS.weight} strokeWidth={2} connectNulls dot={{ r: 2 }} />
+                  {hasBodyFat && <Line yAxisId="right" type="monotone" dataKey="bodyFat" name="体脂肪率(%)" stroke={COLORS.bodyFat} strokeWidth={2} connectNulls dot={{ r: 2 }} />}
                 </LineChart>
               </ResponsiveContainer>
             )}

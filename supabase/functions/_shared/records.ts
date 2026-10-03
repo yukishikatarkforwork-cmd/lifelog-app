@@ -39,6 +39,10 @@ export interface PhotoRow {
 export interface LinkRow {
   date: string; url: string; title: string | null; memo: string | null;
 }
+export interface BodyRow {
+  date: string; weight_kg: number | null; body_fat_pct: number | null;
+  muscle_kg: number | null; visceral_fat_level: number | null; basal_metabolism_kcal: number | null;
+}
 
 export interface Dataset {
   meals: MealRow[];
@@ -48,6 +52,7 @@ export interface Dataset {
   diaries: DiaryRow[];
   photos: PhotoRow[];
   links: LinkRow[];
+  bodies: BodyRow[];
 }
 
 /** PostgREST の1000行制限を越えるため、range で分割して全件取る */
@@ -80,7 +85,7 @@ export async function fetchRange(
     return filtered.order('date').range(from, to);
   };
 
-  const [meals, conditions, weathers, expenses, diaries, photos, links] = await Promise.all([
+  const [meals, conditions, weathers, expenses, diaries, photos, links, bodies] = await Promise.all([
     fetchAll<MealRow>(page('meal_entries', 'date,meal_type,food_name,amount,calories,protein,fat,carbohydrate,memo')),
     fetchAll<ConditionRow>(page('daily_records', 'date,condition_score,mood_score,sleep_hours,headache,medication,memo')),
     fetchAll<WeatherRow>(page('weather_records', 'date,weather,pressure_hpa,temperature,humidity')),
@@ -89,9 +94,10 @@ export async function fetchRange(
     // 写真そのものは渡せないが、キャプションは出来事の手がかりになるので拾う
     fetchAll<PhotoRow>(page('photos', 'date,caption')),
     fetchAll<LinkRow>(page('links', 'date,url,title,memo')),
+    fetchAll<BodyRow>(page('body_records', 'date,weight_kg,body_fat_pct,muscle_kg,visceral_fat_level,basal_metabolism_kcal')),
   ]);
 
-  return { meals, conditions, weathers, expenses, diaries, photos, links };
+  return { meals, conditions, weathers, expenses, diaries, photos, links, bodies };
 }
 
 // ---------- 集計サマリー ----------
@@ -105,6 +111,10 @@ export interface Stats {
   meals: { days: number; items: number; avg_kcal: number | null; avg_p: number | null; avg_f: number | null; avg_c: number | null };
   expenses: { total: number; count: number; days: number; by_category: Array<{ category: string; total: number; count: number }> };
   diary_count: number;
+  body: {
+    days: number; avg_weight: number | null; first_weight: number | null;
+    last_weight: number | null; avg_body_fat: number | null;
+  };
   correlation: {
     pressure_condition: { r: number | null; n: number };
     sleep_condition: { r: number | null; n: number };
@@ -136,6 +146,12 @@ export function formatStats(s: Stats): string {
     lines.push(`カテゴリ別（多い順）: ${s.expenses.by_category.map((c) => `${c.category} ${yen(c.total)}`).join(' / ')}`);
   }
   lines.push(`日記 ${s.diary_count} 件`);
+  if (s.body && s.body.days > 0) {
+    lines.push(
+      `体重記録 ${s.body.days} 日 / 平均 ${r1(s.body.avg_weight)} kg / ` +
+      `期間最初 ${r1(s.body.first_weight)} kg → 最後 ${r1(s.body.last_weight)} kg / 平均体脂肪率 ${r1(s.body.avg_body_fat)} %`,
+    );
+  }
   lines.push('');
   lines.push('相関係数（ピアソン、-1〜1。2点未満や分散0のときは — ）:');
   lines.push(`- 気圧 × 体調: ${r2(s.correlation.pressure_condition.r)} (${s.correlation.pressure_condition.n} 点)`);
@@ -155,6 +171,7 @@ export function collectDates(d: Dataset): string[] {
     ...d.diaries.map((r) => r.date),
     ...d.photos.map((r) => r.date),
     ...d.links.map((r) => r.date),
+    ...d.bodies.map((r) => r.date),
   ])].sort();
 }
 
@@ -166,6 +183,7 @@ export interface DayIndex {
   diary: Map<string, DiaryRow>;
   photos: Map<string, PhotoRow[]>;
   links: Map<string, LinkRow[]>;
+  body: Map<string, BodyRow>;
 }
 
 export function indexByDate(d: Dataset): DayIndex {
@@ -182,6 +200,7 @@ export function indexByDate(d: Dataset): DayIndex {
     wth: new Map(d.weathers.map((w) => [w.date, w])),
     meals, exps, photos, links,
     diary: new Map(d.diaries.map((e) => [e.date, e])),
+    body: new Map(d.bodies.map((b) => [b.date, b])),
   };
 }
 
@@ -189,22 +208,34 @@ export function indexByDate(d: Dataset): DayIndex {
 export function formatCompactDaily(idx: DayIndex, dates: string[]): string {
   const lines: string[] = [
     '## 日別サマリー', '',
-    '| 日付 | 体調 | 気分 | 睡眠h | 頭痛 | 天気 | 気圧 | kcal | 支出 |',
-    '|---|---|---|---|---|---|---|---|---|',
+    '| 日付 | 体調 | 気分 | 睡眠h | 頭痛 | 体重kg | 天気 | 気圧 | kcal | 支出 |',
+    '|---|---|---|---|---|---|---|---|---|---|',
   ];
   for (const date of dates) {
     const c = idx.cond.get(date);
     const w = idx.wth.get(date);
+    const b = idx.body.get(date);
     const kcal = (idx.meals.get(date) ?? []).reduce((s, m) => s + (m.calories ?? 0), 0);
     const exp = (idx.exps.get(date) ?? []).reduce((s, e) => s + e.amount, 0);
     lines.push(
       `| ${date} | ${c?.condition_score ?? ''} | ${c?.mood_score ?? ''} | ${c?.sleep_hours ?? ''} | ` +
-      `${c?.headache ? '有' : ''} | ${w?.weather ? (WEATHER_LABELS[w.weather] ?? w.weather) : ''} | ` +
+      `${c?.headache ? '有' : ''} | ${b?.weight_kg ?? ''} | ${w?.weather ? (WEATHER_LABELS[w.weather] ?? w.weather) : ''} | ` +
       `${w?.pressure_hpa ?? ''} | ${Math.round(kcal) || ''} | ${Math.round(exp) || ''} |`,
     );
   }
   lines.push('');
   return lines.join('\n');
+}
+
+/** 体重・体組成を1行にする。値が無ければ null */
+function formatBodyParts(b: BodyRow): string | null {
+  const parts: string[] = [];
+  if (b.weight_kg != null) parts.push(`${b.weight_kg}kg`);
+  if (b.body_fat_pct != null) parts.push(`体脂肪率${b.body_fat_pct}%`);
+  if (b.muscle_kg != null) parts.push(`筋肉量${b.muscle_kg}kg`);
+  if (b.visceral_fat_level != null) parts.push(`内臓脂肪レベル${b.visceral_fat_level}`);
+  if (b.basal_metabolism_kcal != null) parts.push(`基礎代謝${b.basal_metabolism_kcal}kcal`);
+  return parts.length > 0 ? parts.join(' / ') : null;
 }
 
 /** 日ごとの詳細（食事の品目・支出の明細まで） */
@@ -223,6 +254,12 @@ export function formatFullDaily(idx: DayIndex, dates: string[], heading = '## �
       if (c.medication) parts.push('服薬あり');
       if (parts.length > 0) lines.push(`体調: ${parts.join(' / ')}`);
       if (c.memo) lines.push(`体調メモ: ${c.memo.replace(/\n/g, ' ')}`);
+    }
+
+    const b = idx.body.get(date);
+    if (b) {
+      const line = formatBodyParts(b);
+      if (line) lines.push(`体重: ${line}`);
     }
 
     const w = idx.wth.get(date);
@@ -313,6 +350,9 @@ export function buildDaySummaryText(date: string, idx: DayIndex): string {
     if (c.medication) parts.push('服薬あり');
     if (c.memo) parts.push(c.memo.replace(/\n/g, ' '));
   }
+
+  const b = idx.body.get(date);
+  if (b?.weight_kg != null) parts.push(`体重${b.weight_kg}kg`);
 
   const w = idx.wth.get(date);
   if (w) {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -8,9 +8,11 @@ import { EMPTY_GOALS, MEAL_LABELS, MEAL_TYPES } from '../lib/types';
 import { addDays, formatDisplay, todayStr } from '../lib/date';
 import { fmt, parseNum, sumNutrition } from '../lib/nutrition';
 import { useReload } from '../lib/useReload';
+import { autoSyncHealthPlanet } from '../lib/body';
 import DayTotals from '../components/DayTotals';
 import MealEntryForm from '../components/MealEntryForm';
 import ConditionCard from '../components/ConditionCard';
+import BodyCard from '../components/BodyCard';
 import WeatherCard from '../components/WeatherCard';
 import ExpensesCard from '../components/ExpensesCard';
 import DiaryCard from '../components/DiaryCard';
@@ -46,6 +48,13 @@ export default function TodayPage() {
   const [goals, setGoals] = useState<NutritionGoals>(EMPTY_GOALS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // Health Planet の自動同期で体重が増えたら、体重カードを読み直させる
+  const [bodyVersion, setBodyVersion] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    void autoSyncHealthPlanet().then((changed) => { if (changed) setBodyVersion((v) => v + 1); });
+  }, [user]);
 
   // モーダル状態
   const [formOpen, setFormOpen] = useState(false);
@@ -172,6 +181,7 @@ export default function TodayPage() {
       {error && <div className="error-box">{error}</div>}
 
       <ConditionCard date={date} />
+      <BodyCard date={date} key={`body-${bodyVersion}`} />
       <WeatherCard date={date} />
 
       <div className="section-title" style={{ marginTop: 4 }}><h2><IconMeals /> 食事</h2></div>

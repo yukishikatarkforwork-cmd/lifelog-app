@@ -9,6 +9,8 @@ import { reindex } from '../lib/ai';
 import { deleteAllPhotos } from '../lib/photos';
 import { insertSampleData, sampleDates } from '../lib/sampleData';
 import WeatherSettingsCard from '../components/WeatherSettingsCard';
+import HealthPlanetCard from '../components/HealthPlanetCard';
+import { disconnectHealthPlanet } from '../lib/body';
 import InstallCard from '../components/InstallCard';
 
 export default function SettingsPage() {
@@ -96,7 +98,7 @@ export default function SettingsPage() {
   const deleteAllData = async () => {
     if (!user) return;
     if (!confirm(
-      '体調・食事・天気気圧・家計簿・日記・写真・リンク・旅のしおり・テンプレート・栄養目標・共有設定を含む、'
+      '体調・体重・食事・天気気圧・家計簿・日記・写真・リンク・旅のしおり・テンプレート・栄養目標・共有設定・Health Planet 連携を含む、'
       + 'すべての記録を削除します。元に戻せません。よろしいですか？',
     )) return;
     setErr('');
@@ -108,6 +110,7 @@ export default function SettingsPage() {
       supabase.from('meal_templates').delete().eq('user_id', user.id),
       supabase.from('food_templates').delete().eq('user_id', user.id),
       supabase.from('daily_records').delete().eq('user_id', user.id),
+      supabase.from('body_records').delete().eq('user_id', user.id),
       supabase.from('weather_records').delete().eq('user_id', user.id),
       supabase.from('expenses').delete().eq('user_id', user.id),
       supabase.from('expense_categories').delete().eq('user_id', user.id),
@@ -123,6 +126,13 @@ export default function SettingsPage() {
       await deleteAllPhotos(user.id);
     } catch (photoErr) {
       e ??= photoErr instanceof Error ? photoErr.message : '写真の削除に失敗しました';
+    }
+    // Health Planet のトークンは本人からも直接触れないので Edge Function に消してもらう。
+    // 未連携でも disconnect は成功扱いなので、そのまま呼んでよい
+    try {
+      await disconnectHealthPlanet();
+    } catch (hpErr) {
+      e ??= hpErr instanceof Error ? hpErr.message : 'Health Planet 連携の解除に失敗しました';
     }
     if (e) { setErr(e); return; }
     setCustomCats([]);
@@ -224,7 +234,9 @@ export default function SettingsPage() {
 
       <InstallCard />
 
-      <WeatherSettingsCard key={resetKey} />
+      <WeatherSettingsCard key={`weather-${resetKey}`} />
+
+      <HealthPlanetCard key={`hp-${resetKey}`} />
 
       <div className="card">
         <h2>カレンダー共有</h2>

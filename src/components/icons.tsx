@@ -82,3 +82,9 @@ export const IconTrip = ({ size = 16 }: P) => (
     <line x1="2" y1="13" x2="22" y2="13"/>
   </svg>
 );
+export const IconScale = ({ size = 16 }: P) => (
+  <svg {...s(size)}>
+    <rect x="3" y="3" width="18" height="18" rx="3"/>
+    <path d="M7.5 9.5a5.5 5.5 0 019 0"/><path d="M12 12l2-3"/>
+  </svg>
+);

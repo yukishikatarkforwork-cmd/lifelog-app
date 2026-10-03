@@ -108,6 +108,15 @@
 - **予算と実績の突き合わせ**：旅行期間中の家計簿を自動集計して予算と並べる
 - **旅行後は旅の記録に変わる**：同じ期間の日記・写真・支出が既にあるので、各日から記録へ直接たどれる
 
+**Phase 16（体重・体組成）**
+- **体重・体脂肪率の記録**（1日1件）。「今日」画面で手入力できる
+- **タニタ Health Planet 連携**：対応体組成計に乗るだけで体重・体脂肪率・筋肉量・内臓脂肪レベル・基礎代謝・体内年齢・推定骨量が自動で入る
+  - 連携時に過去1年分を取り込み、以降は「今日」画面を開いたときに1時間に1回だけ裏で差分同期
+  - 1日に複数回測った日は **その日の最初の測定** を採用（朝イチの条件で揃える）
+  - 手入力した日は同期で上書きしない
+- **分析**：体重・体脂肪率の推移グラフ、期間の増減。AI の集計サマリーと日別記録にも体重が入る
+- **出力**：統合 Markdown と体重・体組成 CSV
+
 ## 技術スタック
 
 | 区分 | 採用 |
@@ -202,6 +211,32 @@ VITE_SUPABASE_ANON_KEY=eyJhbGci...
    - **インデックスを作り直す** … 既に記録がある状態から検索を有効にするとき
 
 `SUPABASE_URL` と `SUPABASE_ANON_KEY` は Edge Function の実行環境に自動で入るため、設定は不要。
+
+#### 4b. タニタ Health Planet 連携（任意）
+
+体重の自動取得にだけ必要。設定しなくても体重は手入力できる。
+
+1. Health Planet のアカウント（スマホアプリで使っているもの）でログインし、
+   <https://www.healthplanet.jp/apis_account.do> からアプリケーションを登録する
+   - **リダイレクト URI** には本番アプリの `https://<あなたのドメイン>/settings/healthplanet` を入れる
+     （設定画面の連携カードに表示される「戻り先」がそのまま使える）
+   - 登録すると `client_id` と `client_secret` が発行される
+2. シークレットとして登録し、Edge Function をデプロイする
+
+   ```bash
+   supabase secrets set HEALTHPLANET_CLIENT_ID=... HEALTHPLANET_CLIENT_SECRET=...
+   supabase functions deploy healthplanet
+   ```
+
+3. アプリの **設定 → 体重の自動取得** で「Health Planet と連携する」を押し、Health Planet 側で許可する
+
+トークンは `healthplanet_tokens` テーブルに置き、RLS ポリシーも grant も付けていないので
+**本人のブラウザからも読めない**（Edge Function の service role だけが触る）。
+画面に出す連携状態は `healthplanet_status()` がトークン抜きで返す。
+アクセストークンは Health Planet 側で期限があるため、期限が近づくと同期時に `refresh_token` で更新する。
+更新できなくなった場合は設定画面にエラーが出るので、連携し直す。
+
+API 仕様: <https://www.healthplanet.jp/apis/api.html>（1時間あたり60回まで。1回の取得は最大3か月なので、長期間は90日ごとに分けて引く）
 
 > 💡 **プロバイダの差し替え**：生成は `ask-ai` / `draft-trip` の先頭定数、埋め込みは
 > `supabase/functions/_shared/embedding.ts` の `embed()` だけを書き換えれば替えられる。
@@ -349,7 +384,7 @@ DBトリガにしなかったのは、日別要約が体調・天気・食事・
 
 ここまでの機能はすべて「過去の記録」で、`user × date` が単位だった。しおりは性質が違う。
 
-| | 記録（Phase 1〜14） | 旅のしおり（Phase 15） |
+| | 記録（Phase 1〜14, 16） | 旅のしおり（Phase 15） |
 |---|---|---|
 | 時間 | 過去のみ | **未来**が主役 |
 | 単位 | 1日（`user × date` が主キー） | **期間**（2泊3日をひとまとまり） |
@@ -387,6 +422,8 @@ DBトリガにしなかったのは、日別要約が体調・天気・食事・
 - `shares` — カレンダー共有（owner→invitee、scopes/期間/status）
 - `links` — 日付に紐づくURL（タイトルは自動取得し、AI検索の対象になる）
 - `trips` / `trip_items` / `trip_checklist` — 旅のしおり（期間単位。日単位の記録とは独立）
+- `body_records` — 体重・体組成の日次記録（user×date、weight/body_fat/muscle/visceral_fat/basal_metabolism/body_age/bone、source=manual|healthplanet）
+- `healthplanet_tokens` — Health Planet の OAuth トークン（**クライアントからはアクセス不可**。Edge Function 専用）
 - `user_settings.home_latitude / home_longitude` — 天気の自動取得に使う位置
 
 主な SQL 関数:
@@ -401,6 +438,7 @@ DBトリガにしなかったのは、日別要約が体調・天気・食事・
 | `can_view(owner, scope, date)` | 「この日のこのカテゴリを、今のログインユーザーが見てよいか」。各テーブルの共有用 SELECT ポリシーがこれを呼ぶ |
 | `accept_share(id)` | 招待の承諾。招待側に shares を直接 UPDATE させると scopes を書き換えられるため、承諾はこの関数に限定している |
 | `trip_actual_cost(trip_id)` | 旅行期間中の家計簿を合計する（予算と並べて表示するため） |
+| `healthplanet_status()` | Health Planet の連携状態（連携日時・最終同期・エラー）をトークン抜きで返す（`security definer`） |
 
 詳細は [`supabase/schema.sql`](supabase/schema.sql) を参照。
 
@@ -425,6 +463,7 @@ DBトリガにしなかったのは、日別要約が体調・天気・食事・
 | **Phase 13** | PWA（ホーム画面に追加・オフライン起動） | ✅ 完了 |
 | **Phase 14** | リンク（URL・タイトル自動取得・AI検索対象） | ✅ 完了 |
 | **Phase 15** | 旅のしおり（期間単位の予定・持ち物・AI下書き・予算実績） | ✅ 完了 |
+| **Phase 16** | 体重・体組成（手入力・タニタ Health Planet 連携・推移グラフ） | ✅ 完了 |
 
 ---
 

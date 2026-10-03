@@ -34,6 +34,19 @@ interface SampleDay {
   expenses?: Array<[string, number]>;
 }
 
+/**
+ * サンプル用の体重。ゆるやかに減っていく線にノイズを乗せる（決定的なので再投入しても同じ値）。
+ * 4日に1日は乗り忘れた日にして、欠損があっても線がつながることを確かめられるようにする。
+ */
+function sampleBody(ago: number): { weight_kg: number; body_fat_pct: number } | null {
+  if (ago % 4 === 3) return null;
+  const noise = Math.sin(ago * 1.7) * 0.4;
+  return {
+    weight_kg: Math.round((63.2 + ago * 0.015 + noise) * 10) / 10,
+    body_fat_pct: Math.round((18.0 + ago * 0.01 + noise * 0.5) * 10) / 10,
+  };
+}
+
 const SAMPLE: SampleDay[] = [
   {
     ago: 2, title: '江ノ島までサイクリング', tags: ['おでかけ', '運動'],
@@ -199,7 +212,7 @@ export interface SampleResult {
 
 /**
  * サンプル記録を投入する。
- * 体調・天気・日記は user×date が主キーなので upsert（同じ日の既存記録は上書きされる）。
+ * 体調・体重・天気・日記は user×date が主キーなので upsert（同じ日の既存記録は上書きされる）。
  * 食事・支出は行が増える形なので、重複投入を避けたい場合は先に削除すること。
  */
 export async function insertSampleData(userId: string): Promise<SampleResult> {
@@ -240,8 +253,14 @@ export async function insertSampleData(userId: string): Promise<SampleResult> {
     })),
   );
 
+  const bodies = dated.flatMap((s) => {
+    const b = sampleBody(s.ago);
+    return b ? [{ user_id: userId, date: s.date, ...b, source: 'manual' as const, measured_at: null, memo: null }] : [];
+  });
+
   const results = await Promise.all([
     supabase.from('daily_records').upsert(conditions, { onConflict: 'user_id,date' }),
+    supabase.from('body_records').upsert(bodies, { onConflict: 'user_id,date' }),
     supabase.from('weather_records').upsert(weathers, { onConflict: 'user_id,date' }),
     supabase.from('diary_entries').upsert(diaries, { onConflict: 'user_id,date' }),
     supabase.from('meal_entries').insert(meals),

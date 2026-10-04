@@ -2,15 +2,21 @@
 // Edge Function: scan-receipt
 //
 // レシート画像から店名・日付・明細・合計を構造化して返す。
-// OCR サービスを別に契約せず、「AI に聞く」と同じ OpenAI のキー1本で済ませる。
-// 画像1枚あたりの入力は 1〜2K トークン程度で、1回 1円未満。
+//
+// 読み取りの経路は2つ。設定されているほうを使い、両方あれば Azure を優先する。
+//   1. Azure Document Intelligence prebuilt-receipt … 無料枠（月500ページ）。ゼロ円。
+//      構造化はされるが品名の整形・税込換算・カテゴリは _shared/receipt-rules.ts で後処理
+//   2. OpenAI（画像入力）… 1枚 1円未満。品名の言い換えや割引の解釈まで任せられる
+//   Azure が失敗したとき（枠切れ・障害）に OpenAI で撮り直すのは、費用が発生するので
+//   RECEIPT_FALLBACK_OPENAI=1 を明示したときだけ。
 //
 // 自動登録はしない。返した結果はアプリ側の確認画面で直してから保存する
 // （値引の扱い・税込換算・カテゴリ分けは機械的に決めきれないため）。
 // =====================================================================
 import { createClient } from 'npm:@supabase/supabase-js@^2.107.0';
 import { CORS, json } from '../_shared/cors.ts';
-import { normalizeReceipt, receiptSchema } from '../_shared/receipt.ts';
+import { normalizeReceipt, receiptSchema, type ReceiptScan } from '../_shared/receipt.ts';
+import { AzureReceiptError, scanWithAzure } from '../_shared/azure-receipt.ts';
 
 const CHAT_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 // 画像入力に対応したモデル。ask-ai と同じ最安ティア
@@ -20,8 +26,8 @@ const FALLBACK_MODEL = 'gpt-4o-mini';
 const REASONING_EFFORT = 'low';
 const MAX_OUTPUT_TOKENS = 4000;
 
-/** 1日あたりの読み取り回数。1回 1円未満だが、無制限にはしない */
-const DAILY_LIMIT = 40;
+/** 1日あたりの読み取り回数。Azure の無料枠（月500）を1人で使い切らない程度に */
+const DAILY_LIMIT = 16;
 /** data URL の上限（長辺 2000px の WebP で 300〜600KB。base64 で 1.4 倍） */
 const MAX_IMAGE_CHARS = 4 * 1024 * 1024;
 
@@ -80,12 +86,55 @@ async function callModel(apiKey: string, model: string, image: string, categorie
   });
 }
 
+class ScanError extends Error {
+  constructor(message: string, readonly status = 502) {
+    super(message);
+  }
+}
+
+/** OpenAI 経路。モデルが画像を弾いたら画像対応が確実なモデルで撮り直す */
+async function scanWithOpenAI(apiKey: string, image: string, categories: string[], defaultDate: string | undefined): Promise<ReceiptScan> {
+  let model = MODEL;
+  let res = await callModel(apiKey, model, image, categories, defaultDate);
+  if (res.status === 400) {
+    const detail = await res.text().catch(() => '');
+    if (!/image|vision|modal|content/i.test(detail)) throw new ScanError(`読み取りに失敗しました (400): ${detail.slice(0, 300)}`);
+    model = FALLBACK_MODEL;
+    res = await callModel(apiKey, model, image, categories, defaultDate);
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new ScanError(`読み取りに失敗しました (${res.status}): ${detail.slice(0, 300)}`);
+  }
+  const completion = await res.json().catch(() => null) as {
+    choices?: Array<{ message?: { content?: string | null; refusal?: string | null } }>;
+  } | null;
+  const choice = completion?.choices?.[0];
+  if (choice?.message?.refusal) throw new ScanError(`読み取れませんでした: ${choice.message.refusal}`, 422);
+  const content = choice?.message?.content;
+  if (!content) throw new ScanError('AI から結果が返りませんでした');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new ScanError('結果の形式を解釈できませんでした');
+  }
+  return normalizeReceipt(parsed, categories);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'POST のみ受け付けます' }, 405);
 
-  const apiKey = Deno.env.get('OPENAI_API_KEY');
-  if (!apiKey) return json({ error: 'サーバーに OPENAI_API_KEY が設定されていません' }, 500);
+  const apiKey = Deno.env.get('OPENAI_API_KEY') ?? '';
+  const azureEndpoint = Deno.env.get('AZURE_DI_ENDPOINT') ?? '';
+  const azureKey = Deno.env.get('AZURE_DI_KEY') ?? '';
+  const azureConfigured = Boolean(azureEndpoint && azureKey);
+  // Azure が使えるときは OpenAI（有料）に自動で逃げない。明示的に許可したときだけ
+  const openaiAllowed = Boolean(apiKey) && (!azureConfigured || Deno.env.get('RECEIPT_FALLBACK_OPENAI') === '1');
+  if (!apiKey && !azureConfigured) {
+    return json({ error: 'サーバーにレシート読み取りの設定がありません（AZURE_DI_ENDPOINT / AZURE_DI_KEY または OPENAI_API_KEY）' }, 500);
+  }
 
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) return json({ error: 'ログインが必要です' }, 401);
@@ -127,51 +176,39 @@ Deno.serve(async (req: Request) => {
     return json({ error: `本日のレシート読み取り回数の上限（${DAILY_LIMIT}回）に達しました。` }, 429);
   }
 
-  let res: Response;
-  let model = MODEL;
-  try {
-    res = await callModel(apiKey, model, image, categories, defaultDate);
-    if (res.status === 400) {
-      // 画像非対応などモデル側の都合なら、画像対応が確実なモデルで撮り直す
-      const detail = await res.text().catch(() => '');
-      if (/image|vision|modal|content/i.test(detail)) {
-        model = FALLBACK_MODEL;
-        res = await callModel(apiKey, model, image, categories, defaultDate);
-      } else {
-        return json({ error: `読み取りに失敗しました (400): ${detail.slice(0, 300)}` }, 502);
-      }
+  let scan: ReceiptScan | null = null;
+  let provider = '';
+  let azureFailure: string | null = null;
+
+  if (azureConfigured) {
+    try {
+      scan = await scanWithAzure(azureEndpoint, azureKey, image, categories);
+      provider = 'azure-prebuilt-receipt';
+    } catch (e) {
+      azureFailure = e instanceof Error ? e.message : String(e);
+      // 有料経路に逃げられないならここで諦める。枠切れ（429）はそのまま伝える
+      if (!openaiAllowed) return json({ error: azureFailure }, e instanceof AzureReceiptError ? e.status : 502);
+      console.warn('[scan-receipt] Azure failed, falling back to OpenAI:', azureFailure);
     }
-  } catch (e) {
-    return json({ error: e instanceof Error ? e.message : 'AI の呼び出しに失敗しました' }, 502);
   }
 
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    return json({ error: `読み取りに失敗しました (${res.status}): ${detail.slice(0, 300)}` }, 502);
+  if (!scan) {
+    try {
+      scan = await scanWithOpenAI(apiKey, image, categories, defaultDate);
+      provider = azureFailure ? 'openai-fallback' : 'openai';
+    } catch (e) {
+      if (e instanceof ScanError) return json({ error: e.message }, e.status);
+      return json({ error: e instanceof Error ? e.message : 'AI の呼び出しに失敗しました' }, 502);
+    }
   }
 
-  const completion = await res.json().catch(() => null) as {
-    choices?: Array<{ message?: { content?: string | null; refusal?: string | null }; finish_reason?: string }>;
-  } | null;
-  const choice = completion?.choices?.[0];
-  if (choice?.message?.refusal) return json({ error: `読み取れませんでした: ${choice.message.refusal}` }, 422);
-  const content = choice?.message?.content;
-  if (!content) return json({ error: 'AI から結果が返りませんでした' }, 502);
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    return json({ error: '結果の形式を解釈できませんでした' }, 502);
-  }
-
-  const scan = normalizeReceipt(parsed, categories);
   if (scan.items.length === 0 && scan.total == null) {
     return json({ error: 'レシートとして読み取れませんでした。明るい場所で、全体が写るように撮り直してください。' }, 422);
   }
+  if (!scan.date && defaultDate) scan.date = defaultDate;
 
   return new Response(JSON.stringify(scan), {
     status: 200,
-    headers: { ...CORS, 'Content-Type': 'application/json', 'X-Ai-Usage': `${used ?? 0}/${DAILY_LIMIT}`, 'X-Ai-Model': model },
+    headers: { ...CORS, 'Content-Type': 'application/json', 'X-Ai-Usage': `${used ?? 0}/${DAILY_LIMIT}`, 'X-Ai-Model': provider },
   });
 });

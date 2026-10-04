@@ -19,6 +19,17 @@ const RANGES = [
   { days: 365, label: '1年' },
 ];
 const COLORS = { protein: '#e07070', fat: '#c4954a', carb: '#6baac0', kcal: '#e9a94d', condition: '#2f8f6b', pressure: '#6baac0', weight: '#2f8f6b', bodyFat: '#e9a94d' };
+/**
+ * 体重・体脂肪率以外の体組成。Health Planet が返す項目で、データがあるものだけグラフを出す
+ * （機種によって送ってくる項目が違う。体重と体脂肪率しか無い機種も多い）。
+ */
+const BODY_METRICS: Array<{ key: keyof Pick<BodyRecord, 'muscle_kg' | 'visceral_fat_level' | 'basal_metabolism_kcal' | 'body_age' | 'bone_kg'>; label: string; unit: string; digits: number }> = [
+  { key: 'muscle_kg', label: '筋肉量', unit: 'kg', digits: 1 },
+  { key: 'visceral_fat_level', label: '内臓脂肪レベル', unit: '', digits: 1 },
+  { key: 'basal_metabolism_kcal', label: '基礎代謝', unit: 'kcal', digits: 0 },
+  { key: 'body_age', label: '体内年齢', unit: '歳', digits: 0 },
+  { key: 'bone_kg', label: '推定骨量', unit: 'kg', digits: 1 },
+];
 const CAT_PALETTE = ['#2f8f6b', '#6baac0', '#e9a94d', '#e07070', '#7ab5a0', '#c4954a', '#8fa8b8', '#a3a3a3'];
 
 export default function GraphPage() {
@@ -110,10 +121,22 @@ export default function GraphPage() {
     for (let i = 0; i < days; i++) {
       const d = addDays(start, i);
       const r = map.get(d);
-      out.push({ date: formatShort(d), weight: r?.weight_kg ?? null, bodyFat: r?.body_fat_pct ?? null });
+      out.push({
+        date: formatShort(d), weight: r?.weight_kg ?? null, bodyFat: r?.body_fat_pct ?? null,
+        muscle_kg: r?.muscle_kg ?? null, visceral_fat_level: r?.visceral_fat_level ?? null,
+        basal_metabolism_kcal: r?.basal_metabolism_kcal ?? null, body_age: r?.body_age ?? null, bone_kg: r?.bone_kg ?? null,
+      });
     }
     return out;
   }, [bodies, start, days]);
+  // データのある体組成項目だけ。最新値と期間最初からの増減を添える
+  const bodyMetrics = useMemo(() => BODY_METRICS.flatMap((m) => {
+    const rows = bodies.filter((r) => r[m.key] != null);
+    if (rows.length === 0) return [];
+    const first = rows[0][m.key]!;
+    const last = rows[rows.length - 1][m.key]!;
+    return [{ ...m, latest: last, delta: Math.round((last - first) * 10) / 10, days: rows.length }];
+  }), [bodies]);
   const bodySummary = useMemo(() => {
     const ws = bodies.filter((r) => r.weight_kg != null);
     if (ws.length === 0) return null;
@@ -325,6 +348,27 @@ export default function GraphPage() {
               </ResponsiveContainer>
             )}
           </div>
+
+          {/* 体組成（データのある項目だけ） */}
+          {bodyMetrics.map((m) => (
+            <div className="card" key={m.key}>
+              <h2>
+                {m.label}
+                <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>
+                  {' '}最新 {m.latest.toFixed(m.digits)}{m.unit}（{m.delta > 0 ? '+' : ''}{m.delta.toFixed(m.digits)}）・{m.days} 日分
+                </span>
+              </h2>
+              <ResponsiveContainer width="100%" height={170}>
+                <LineChart data={bodyTrend} margin={{ top: 5, right: 8, left: -12, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                  <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10 }} width={48} allowDecimals={m.digits > 0} tickFormatter={(v) => Number(v).toFixed(m.digits)} />
+                  <Tooltip formatter={(v) => `${Number(v).toFixed(m.digits)}${m.unit}`} />
+                  <Line type="monotone" dataKey={m.key} name={`${m.label}${m.unit ? `(${m.unit})` : ''}`} stroke={COLORS.weight} strokeWidth={2} connectNulls dot={{ r: 2 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          ))}
 
           {/* 支出カテゴリ別 */}
           <div className="card">

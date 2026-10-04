@@ -38,12 +38,20 @@ interface SampleDay {
  * サンプル用の体重。ゆるやかに減っていく線にノイズを乗せる（決定的なので再投入しても同じ値）。
  * 4日に1日は乗り忘れた日にして、欠損があっても線がつながることを確かめられるようにする。
  */
-function sampleBody(ago: number): { weight_kg: number; body_fat_pct: number } | null {
+function sampleBody(ago: number) {
   if (ago % 4 === 3) return null;
   const noise = Math.sin(ago * 1.7) * 0.4;
+  const weight = Math.round((63.2 + ago * 0.015 + noise) * 10) / 10;
+  const fat = Math.round((18.0 + ago * 0.01 + noise * 0.5) * 10) / 10;
+  // 体組成計が送ってくる残りの項目も入れて、分析画面の各グラフが出ることを確かめられるようにする
   return {
-    weight_kg: Math.round((63.2 + ago * 0.015 + noise) * 10) / 10,
-    body_fat_pct: Math.round((18.0 + ago * 0.01 + noise * 0.5) * 10) / 10,
+    weight_kg: weight,
+    body_fat_pct: fat,
+    muscle_kg: Math.round(weight * (1 - fat / 100) * 0.95 * 10) / 10,
+    visceral_fat_level: Math.round((7 + ago * 0.01) * 2) / 2,
+    basal_metabolism_kcal: Math.round(1400 + weight * 2),
+    body_age: Math.round(33 + ago * 0.02),
+    bone_kg: 2.6,
   };
 }
 

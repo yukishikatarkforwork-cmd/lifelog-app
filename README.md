@@ -119,10 +119,11 @@
 
 **Phase 17（レシート読み取り）**
 - 「今日」の家計簿カードの **レシート** ボタンからレシートを撮る（スマホはカメラが直接開く）
-- Edge Function `scan-receipt` が画像を OpenAI のモデルに渡し、**店名・日付・支払方法・明細（税込換算・値引反映済み）・合計** を構造化して返す
-  - OCR サービスを別契約しない。「AI に聞く」と同じ API キー1本。1枚あたり 1円未満（1日 40 枚まで）
-  - 半角カナや略称の品名は読みやすい日本語に直す。割引行は直前の品目に反映する
-  - コンビニのように税抜表示＋合計で税加算のレシートは、各品目を税率で税込に換算し、合計が一致するよう端数を調整する
+- Edge Function `scan-receipt` が **店名・日付・支払方法・明細（税込換算・値引反映済み）・合計** を構造化して返す。経路は2つ:
+  - **Azure Document Intelligence の prebuilt-receipt**（既定）… 無料枠 月500ページ。日本語対応。品名の半角カナ→全角、割引行の吸収、
+    税抜表示の税込換算（* 印 8% / 無印 10%）、キーワードによるカテゴリ・支払方法の推定はアプリ側の規則（`_shared/receipt-rules.ts`）で行う
+  - **OpenAI（画像入力）**… Azure 未設定のときに使う。1枚 1円未満。品名の言い換えや割引の解釈までモデルに任せる
+  - 1日 16 枚まで（Azure の無料枠を1人で使い切らない範囲）
 - **自動登録はしない**。確認画面で品名・金額・カテゴリ・日付・支払方法を直してから登録する。明細の合計とレシート合計がずれていれば警告が出る
 - 「明細ごとに登録」と「1件にまとめる（合計だけ・品名はメモ）」を選べる
 
@@ -222,7 +223,22 @@ VITE_SUPABASE_ANON_KEY=eyJhbGci...
 
 `SUPABASE_URL` と `SUPABASE_ANON_KEY` は Edge Function の実行環境に自動で入るため、設定は不要。
 
-#### 4b. タニタ Health Planet 連携（任意）
+#### 4b. レシート読み取り（任意）
+
+無料で使うなら Azure、設定が面倒なら OpenAI のキーだけでも動く（1枚 1円未満）。
+
+1. Azure ポータルで **Document Intelligence** リソースを作る（価格レベル **F0 Free**、リージョンは Japan East）
+2. 「キーとエンドポイント」をシークレットに登録し、デプロイする
+
+   ```bash
+   supabase secrets set AZURE_DI_ENDPOINT=https://<name>.cognitiveservices.azure.com AZURE_DI_KEY=...
+   supabase functions deploy scan-receipt
+   ```
+
+Azure が設定されていると OpenAI には自動で逃げない（有料のため）。枠切れ時に OpenAI で撮り直してよければ
+`RECEIPT_FALLBACK_OPENAI=1` もシークレットに入れる。
+
+#### 4c. タニタ Health Planet 連携（任意）
 
 体重の自動取得にだけ必要。設定しなくても体重は手入力できる。
 

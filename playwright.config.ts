@@ -14,7 +14,8 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // 主な利用はスマホ。デスクトップ幅だと下部ナビ（data-testid 付き）が隠れるので、スマホ幅で流す
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 390, height: 844 } } }],
   webServer: {
     command: 'npm run dev',
     url: 'http://localhost:5173',

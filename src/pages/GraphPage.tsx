@@ -114,6 +114,7 @@ export default function GraphPage() {
   // 分析: KPI・相関・条件別平均体調
   const analysis = useMemo(() => {
     const condMap = new Map(conditions.map((r) => [r.date, r]));
+    const bodyDates = new Set(bodies.filter((r) => r.weight_kg != null).map((r) => r.date));
     const wMap = new Map(weathers.map((r) => [r.date, r]));
     const kcalMap = new Map<string, number>();
     for (const m of meals) kcalMap.set(m.date, (kcalMap.get(m.date) ?? 0) + (m.calories ?? 0));
@@ -139,7 +140,7 @@ export default function GraphPage() {
     for (const d of dates) {
       const c = condMap.get(d);
       const k = kcalMap.get(d); const e = expMap.get(d); const w = wMap.get(d);
-      if (c || (k && k > 0) || (e && e > 0) || w) recorded++;
+      if (c || (k && k > 0) || (e && e > 0) || w || bodyDates.has(d)) recorded++;
       if (k != null && k > 0) { totalKcal += k; daysMeal++; }
       if (e != null && e > 0) { totalExp += e; daysExp++; }
       if (c?.sleep_hours != null) sleeps.push(c.sleep_hours);
@@ -175,7 +176,7 @@ export default function GraphPage() {
       continuity: Math.round((recorded / days) * 100), recorded, totalDays: days,
       groups, correlations,
     };
-  }, [conditions, weathers, meals, expenses, start, days]);
+  }, [conditions, weathers, meals, expenses, bodies, start, days]);
 
   const rangeTotal = useMemo(() => sumNutrition(meals), [meals]);
   const k = pfcKcal(rangeTotal);

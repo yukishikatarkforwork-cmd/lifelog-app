@@ -1007,6 +1007,9 @@ create policy "own body_records" on public.body_records
   for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 grant select, insert, update, delete on public.body_records to authenticated;
+-- Health Planet の同期（Edge Function / service role）が書き込む。
+-- このプロジェクトでは service_role に DML の既定権限が付いていないので明示する
+grant select, insert, update, delete on public.body_records to service_role;
 
 -- ---------------------------------------------------------------------
 -- Health Planet の OAuth トークン
@@ -1036,6 +1039,7 @@ create trigger trg_healthplanet_tokens_updated before update on public.healthpla
 alter table public.healthplanet_tokens enable row level security;
 -- ポリシーを一切作らない＝anon/authenticated からは読めない・書けない（service role は RLS を通らない）
 revoke all on public.healthplanet_tokens from anon, authenticated;
+grant select, insert, update, delete on public.healthplanet_tokens to service_role;
 
 -- 連携状態（トークンを含まない）。security definer で tokens を読み、本人の分だけ返す
 create or replace function public.healthplanet_status()

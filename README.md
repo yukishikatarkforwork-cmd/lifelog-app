@@ -117,6 +117,15 @@
 - **分析**：体重・体脂肪率の推移グラフ、期間の増減。AI の集計サマリーと日別記録にも体重が入る
 - **出力**：統合 Markdown と体重・体組成 CSV
 
+**Phase 17（レシート読み取り）**
+- 「今日」の家計簿カードの **レシート** ボタンからレシートを撮る（スマホはカメラが直接開く）
+- Edge Function `scan-receipt` が画像を OpenAI のモデルに渡し、**店名・日付・支払方法・明細（税込換算・値引反映済み）・合計** を構造化して返す
+  - OCR サービスを別契約しない。「AI に聞く」と同じ API キー1本。1枚あたり 1円未満（1日 40 枚まで）
+  - 半角カナや略称の品名は読みやすい日本語に直す。割引行は直前の品目に反映する
+  - コンビニのように税抜表示＋合計で税加算のレシートは、各品目を税率で税込に換算し、合計が一致するよう端数を調整する
+- **自動登録はしない**。確認画面で品名・金額・カテゴリ・日付・支払方法を直してから登録する。明細の合計とレシート合計がずれていれば警告が出る
+- 「明細ごとに登録」と「1件にまとめる（合計だけ・品名はメモ）」を選べる
+
 ## 技術スタック
 
 | 区分 | 採用 |
@@ -204,6 +213,7 @@ VITE_SUPABASE_ANON_KEY=eyJhbGci...
    supabase functions deploy reindex
    supabase functions deploy fetch-link-title
    supabase functions deploy draft-trip
+   supabase functions deploy scan-receipt
    ```
 
 5. アプリの **設定** 画面を開き、必要に応じて次を実行する
@@ -424,6 +434,7 @@ DBトリガにしなかったのは、日別要約が体調・天気・食事・
 - `trips` / `trip_items` / `trip_checklist` — 旅のしおり（期間単位。日単位の記録とは独立）
 - `body_records` — 体重・体組成の日次記録（user×date、weight/body_fat/muscle/visceral_fat/basal_metabolism/body_age/bone、source=manual|healthplanet）
 - `healthplanet_tokens` — Health Planet の OAuth トークン（**クライアントからはアクセス不可**。Edge Function 専用）
+- `usage_counters` — 用途別の1日あたり利用回数（レシート読み取り `receipt` など。加算は `consume_quota(kind)` 経由のみ）
 - `user_settings.home_latitude / home_longitude` — 天気の自動取得に使う位置
 
 主な SQL 関数:
@@ -438,6 +449,7 @@ DBトリガにしなかったのは、日別要約が体調・天気・食事・
 | `can_view(owner, scope, date)` | 「この日のこのカテゴリを、今のログインユーザーが見てよいか」。各テーブルの共有用 SELECT ポリシーがこれを呼ぶ |
 | `accept_share(id)` | 招待の承諾。招待側に shares を直接 UPDATE させると scopes を書き換えられるため、承諾はこの関数に限定している |
 | `trip_actual_cost(trip_id)` | 旅行期間中の家計簿を合計する（予算と並べて表示するため） |
+| `consume_quota(kind)` | 用途別の利用回数を1つ進めて累計を返す（`consume_ai_quota` の汎用版。レシート読み取りが使う） |
 | `healthplanet_status()` | Health Planet の連携状態（連携日時・最終同期・エラー）をトークン抜きで返す（`security definer`） |
 
 詳細は [`supabase/schema.sql`](supabase/schema.sql) を参照。
@@ -464,6 +476,7 @@ DBトリガにしなかったのは、日別要約が体調・天気・食事・
 | **Phase 14** | リンク（URL・タイトル自動取得・AI検索対象） | ✅ 完了 |
 | **Phase 15** | 旅のしおり（期間単位の予定・持ち物・AI下書き・予算実績） | ✅ 完了 |
 | **Phase 16** | 体重・体組成（手入力・タニタ Health Planet 連携・推移グラフ） | ✅ 完了 |
+| **Phase 17** | レシート読み取り（画像→明細の構造化・確認画面で補正して登録） | ✅ 完了 |
 
 ---
 

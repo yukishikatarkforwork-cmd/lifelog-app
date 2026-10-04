@@ -1056,3 +1056,54 @@ $$;
 
 revoke execute on function public.healthplanet_status() from public, anon;
 grant execute on function public.healthplanet_status() to authenticated;
+
+-- =====================================================================
+-- Phase 17: レシート読み取り（家計簿）
+--
+-- レシート画像を Edge Function `scan-receipt` に渡し、店名・日付・明細・合計を
+-- 構造化して返す。読み取り結果は必ず画面で直してから登録する（自動登録はしない）。
+--
+-- 回数制限は「AI に聞く」（ai_usage）とは別枠にする。質問の枠をレシートで食い潰さないため。
+-- 用途ごとに数えられる汎用の表にしておく。
+-- =====================================================================
+create table if not exists public.usage_counters (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  date    date not null,
+  kind    text not null,
+  count   integer not null default 0,
+  primary key (user_id, date, kind)
+);
+
+alter table public.usage_counters enable row level security;
+
+drop policy if exists "own usage_counters read" on public.usage_counters;
+create policy "own usage_counters read" on public.usage_counters
+  for select to authenticated using (auth.uid() = user_id);
+
+grant select on public.usage_counters to authenticated;
+
+-- 用途 p_kind の利用回数を1つ進めて、その日の累計を返す（consume_ai_quota の汎用版）
+create or replace function public.consume_quota(p_kind text)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count integer;
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+
+  insert into public.usage_counters as u (user_id, date, kind, count)
+  values (auth.uid(), current_date, p_kind, 1)
+  on conflict (user_id, date, kind) do update set count = u.count + 1
+  returning u.count into v_count;
+
+  return v_count;
+end;
+$$;
+
+revoke execute on function public.consume_quota(text) from public, anon;
+grant execute on function public.consume_quota(text) to authenticated;

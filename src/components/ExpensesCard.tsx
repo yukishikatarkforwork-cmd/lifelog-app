@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import type { Expense, ExpenseCategory } from '../lib/types';
@@ -6,7 +7,10 @@ import { DEFAULT_EXPENSE_CATEGORIES, PAYMENT_METHODS } from '../lib/types';
 import { parseNum } from '../lib/nutrition';
 import { useReload } from '../lib/useReload';
 import { useToast } from '../context/ToastContext';
-import { IconWallet, IconTrash } from './icons';
+import { IconWallet, IconTrash, IconCamera } from './icons';
+import { scanReceipt, type ScanResult } from '../lib/receipt';
+import { formatDisplay } from '../lib/date';
+import ReceiptScanModal from './ReceiptScanModal';
 
 export default function ExpensesCard({ date }: { date: string }) {
   const { user } = useAuth();
@@ -16,6 +20,12 @@ export default function ExpensesCard({ date }: { date: string }) {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [err, setErr] = useState('');
+  const navigate = useNavigate();
+
+  // レシート読み取り
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
 
   const categories = useMemo(() => {
     const names = [...DEFAULT_EXPENSE_CATEGORIES];
@@ -35,6 +45,25 @@ export default function ExpensesCard({ date }: { date: string }) {
 
   const total = expenses.reduce((s, e) => s + (e.amount ?? 0), 0);
 
+  const onPickReceipt = async (file: File | undefined) => {
+    if (!file) return;
+    setScanning(true);
+    setErr('');
+    try {
+      setScanResult(await scanReceipt(file, categories, date));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'レシートの読み取りに失敗しました');
+    } finally {
+      setScanning(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const closeScan = () => {
+    if (scanResult) URL.revokeObjectURL(scanResult.previewUrl);
+    setScanResult(null);
+  };
+
   const del = async (id: string) => {
     if (!confirm('この支出を削除しますか？')) return;
     const { error } = await supabase.from('expenses').delete().eq('id', id);
@@ -47,7 +76,14 @@ export default function ExpensesCard({ date }: { date: string }) {
     <div className="card">
       <div className="section-title">
         <h2><IconWallet /> 家計簿 <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>合計 ¥{total.toLocaleString()}</span></h2>
-        <button className="btn small outline" data-testid="add-expense" onClick={() => { setEditing(null); setFormOpen(true); }}>＋ 追加</button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn small outline" data-testid="scan-receipt" onClick={() => fileRef.current?.click()} disabled={scanning}>
+            <IconCamera size={14} /> {scanning ? '読み取り中…' : 'レシート'}
+          </button>
+          <button className="btn small outline" data-testid="add-expense" onClick={() => { setEditing(null); setFormOpen(true); }}>＋ 追加</button>
+        </div>
+        {/* スマホでは capture でカメラが直接開く。PC では通常のファイル選択になる */}
+        <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={(e) => void onPickReceipt(e.target.files?.[0])} />
       </div>
       {err && <div className="error-box">{err}</div>}
 
@@ -66,6 +102,27 @@ export default function ExpensesCard({ date }: { date: string }) {
             </div>
           </div>
         ))
+      )}
+
+      {scanResult && user && (
+        <ReceiptScanModal
+          scan={scanResult.scan}
+          previewUrl={scanResult.previewUrl}
+          userId={user.id}
+          categories={categories}
+          pageDate={date}
+          onClose={closeScan}
+          onSaved={async (savedDate, count) => {
+            closeScan();
+            if (savedDate === date) {
+              await reload();
+              toast(`レシートから ${count} 件を登録しました`);
+            } else {
+              toast(`${formatDisplay(savedDate)} に ${count} 件を登録しました`);
+              navigate(`/day/${savedDate}`);
+            }
+          }}
+        />
       )}
 
       {formOpen && user && (

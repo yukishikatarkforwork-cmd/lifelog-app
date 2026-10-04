@@ -24,7 +24,19 @@ export interface CompressedImage {
 
 export class ImageError extends Error {}
 
-export async function compressImage(file: File): Promise<CompressedImage> {
+export interface CompressOptions {
+  /** 長辺の最大ピクセル数（既定 MAX_EDGE） */
+  maxEdge?: number;
+  /** 品質 0〜1（既定 QUALITY） */
+  quality?: number;
+  /** 出力形式（既定 image/webp） */
+  type?: 'image/webp' | 'image/jpeg';
+}
+
+export async function compressImage(file: File, opts: CompressOptions = {}): Promise<CompressedImage> {
+  const maxEdge = opts.maxEdge ?? MAX_EDGE;
+  const quality = opts.quality ?? QUALITY;
+  const type = opts.type ?? 'image/webp';
   if (!file.type.startsWith('image/')) {
     throw new ImageError('画像ファイルを選んでください。');
   }
@@ -42,7 +54,7 @@ export async function compressImage(file: File): Promise<CompressedImage> {
   }
 
   try {
-    const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+    const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
     const width = Math.max(1, Math.round(bitmap.width * scale));
     const height = Math.max(1, Math.round(bitmap.height * scale));
 
@@ -54,7 +66,7 @@ export async function compressImage(file: File): Promise<CompressedImage> {
     ctx.drawImage(bitmap, 0, 0, width, height);
 
     const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob(resolve, 'image/webp', QUALITY);
+      canvas.toBlob(resolve, type, quality);
     });
     if (!blob) throw new ImageError('画像の変換に失敗しました。');
 

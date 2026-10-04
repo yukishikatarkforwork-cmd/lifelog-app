@@ -90,41 +90,64 @@ export interface ReconcileResult {
  *     端数は最後の品目で合わせる。税率の印が取れなければ合計との比で按分する
  *  4. それ以外は触らず、ずれを note に書く（画面で直してもらう）
  */
+/** 「2コX単360」「3個 x 100」のような数量行。品名ではなく直前の品目の数量・金額の内訳 */
+const QUANTITY_LINE = /^\s*\d+\s*[コ個点]?\s*[xX×＊*]\s*単?\s*[\d,]+/;
+
 export function reconcileItems(raw: RawItem[], total: number | null, totalTax: number | null): ReconcileResult {
   const items: Array<{ name: string; amount: number; line: string }> = [];
+  const notes: string[] = [];
   for (const r of raw) {
     const amount = Math.round(r.amount);
     const name = normalizeName(r.name);
+    const last = items[items.length - 1];
     if (amount < 0 || /値引|割引|引き$|^-/.test(name)) {
-      if (items.length > 0) items[items.length - 1].amount += amount < 0 ? amount : -amount;
+      // 値引行は直前の品目から引く。先頭に来た（品目を取りこぼした）ときは捨てずに残す
+      if (last) last.amount += amount < 0 ? amount : -amount;
+      else notes.push(`割引（${amount}円）の対象品目が読めませんでした。`);
+      continue;
+    }
+    if (QUANTITY_LINE.test(name) && last) {
+      // 数量行の金額が品目の金額（複数個の合計）。直前の品目に金額が無ければそれを採用する
+      if (last.amount === 0) last.amount = amount;
       continue;
     }
     if (name === '') continue;
     items.push({ name, amount, line: r.line ?? '' });
   }
   const strip = (xs: typeof items) => xs.map(({ name, amount }) => ({ name, amount }));
-  if (items.length === 0 || total == null) return { items: strip(items), note: null };
+  const joinNotes = (extra?: string) => [...notes, ...(extra ? [extra] : [])].join(' ') || null;
+  if (items.length === 0 || total == null) return { items: strip(items), note: joinNotes() };
 
   const sum = items.reduce((s, i) => s + i.amount, 0);
-  if (sum === total) return { items: strip(items), note: null };
+  if (sum === total) return { items: strip(items), note: joinNotes() };
 
-  const taxExcluded = totalTax != null && Math.abs(sum + totalTax - total) <= 2;
-  if (taxExcluded || (sum < total && total - sum <= Math.round(sum * 0.11) + 2)) {
-    const marked = items.some((i) => /[*＊※]/.test(i.line));
+  // 税抜表示と判断するのは、税額の行で裏が取れたとき、または品目に軽減税率の印があるときだけ。
+  // 「少し足りない」だけで按分すると、読み落とした品目の分まで他の品目に乗ってしまう
+  const marked = items.some((i) => /[*＊※]/.test(i.line));
+  const taxExcluded = (totalTax != null && Math.abs(sum + totalTax - total) <= 2)
+    || (marked && sum < total && total - sum <= Math.round(sum * 0.11) + 2);
+  if (taxExcluded) {
     let converted = items.map((i) => {
       const rate = marked ? (/[*＊※]/.test(i.line) ? 1.08 : 1.10) : total / sum;
       return { ...i, amount: Math.round(i.amount * rate) };
     });
     const residual = total - converted.reduce((s, i) => s + i.amount, 0);
     if (residual !== 0) {
+      // 端数は最後の品目で吸収する。マイナスになるほど大きければ按分が間違っているので触らない
       const last = converted.length - 1;
-      converted = converted.map((i, idx) => (idx === last ? { ...i, amount: i.amount + residual } : i));
+      if (converted[last].amount + residual >= 0) {
+        converted = converted.map((i, idx) => (idx === last ? { ...i, amount: i.amount + residual } : i));
+      }
     }
+    const finalSum = converted.reduce((s, i) => s + i.amount, 0);
     return {
       items: strip(converted),
-      note: marked ? '税抜表示のため税込に換算しました（* 印は 8%、無印は 10%）。' : '税抜表示のため合計に合わせて按分しました。',
+      note: joinNotes(
+        (marked ? '税抜表示のため税込に換算しました（* 印は 8%、無印は 10%）。' : '税抜表示のため合計に合わせて按分しました。')
+        + (finalSum !== total ? ` それでも合計と ${finalSum - total} 円ずれています。` : ''),
+      ),
     };
   }
 
-  return { items: strip(items), note: `明細の合計（¥${sum.toLocaleString()}）がレシートの合計（¥${total.toLocaleString()}）と一致しません。` };
+  return { items: strip(items), note: joinNotes(`明細の合計（¥${sum.toLocaleString()}）がレシートの合計（¥${total.toLocaleString()}）と一致しません。読み落としや割引の可能性があります。`) };
 }

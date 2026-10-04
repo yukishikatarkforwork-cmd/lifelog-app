@@ -128,6 +128,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: userData, error: userErr } = await supabase.auth.getUser();
   if (userErr || !userData.user) return json({ error: 'ログイン情報を確認できませんでした' }, 401);
+  const userId = userData.user.id;
 
   // 利用回数を消費する（上限超過なら 429）
   const { data: used, error: quotaErr } = await supabase.rpc('consume_ai_quota');
@@ -174,7 +175,7 @@ Deno.serve(async (req: Request) => {
 
       // 拾えた日の詳細だけを実データから取り直す（検索結果の要約文ではなく正確な記録を見せる）
       const hitDates = [...new Set([...diaryRows.map((r) => r.date), ...dayRows.map((r) => r.date)])].sort();
-      const dataset = await fetchRange(supabase, '', '', hitDates);
+      const dataset = await fetchRange(supabase, userId, '', '', hitDates);
       const idx = indexByDate(dataset);
 
       context = [
@@ -193,7 +194,7 @@ Deno.serve(async (req: Request) => {
       if (statsErr) return json({ error: `集計に失敗しました: ${statsErr.message}` }, 500);
       const stats = statsData as Stats;
 
-      const dataset = await fetchRange(supabase, start, end);
+      const dataset = await fetchRange(supabase, userId, start, end);
       const total = dataset.meals.length + dataset.conditions.length + dataset.weathers.length
         + dataset.expenses.length + dataset.diaries.length;
       if (total === 0) {

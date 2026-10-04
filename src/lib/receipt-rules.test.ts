@@ -120,3 +120,24 @@ describe('mapAzureResult', () => {
     expect(r.notes).toMatch(/8%/);
   });
 });
+
+describe('reconcileItems（レビューで見つかった端ケース）', () => {
+  it('税込表示で品目を読み落としただけなら按分せず、ずれを note に書く', () => {
+    const r = reconcileItems([{ name: 'A', amount: 500 }, { name: 'B', amount: 500 }], 1080, null);
+    expect(r.items.map((i) => i.amount)).toEqual([500, 500]);
+    expect(r.note).toMatch(/一致しません/);
+  });
+  it('数量行は直前の品目に畳む', () => {
+    const r = reconcileItems([
+      { name: '液体ブルーレット除菌EX付替', amount: 0 },
+      { name: '2コX単360', amount: 720 },
+      { name: 'コカ・コーラ', amount: 84 },
+    ], 804, null);
+    expect(r.items).toEqual([{ name: '液体ブルーレット除菌EX付替', amount: 720 }, { name: 'コカ・コーラ', amount: 84 }]);
+  });
+  it('先頭に来た割引行は捨てずに note に残す', () => {
+    const r = reconcileItems([{ name: '値引額', amount: -50 }, { name: 'A', amount: 100 }], 100, null);
+    expect(r.items).toEqual([{ name: 'A', amount: 100 }]);
+    expect(r.note).toMatch(/割引/);
+  });
+});

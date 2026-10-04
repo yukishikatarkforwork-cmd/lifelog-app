@@ -35,7 +35,7 @@ export default function ExpensesCard({ date }: { date: string }) {
 
   const reload = useReload(async () => {
     const [exp, cats] = await Promise.all([
-      supabase.from('expenses').select('*').eq('date', date).order('created_at'),
+      supabase.from('expenses').select('*').eq('user_id', user?.id ?? '').eq('date', date).order('created_at'),
       supabase.from('expense_categories').select('*').order('created_at'),
     ]);
     if (exp.error) setErr(exp.error.message);

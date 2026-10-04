@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { compressImage } from './image';
 import type { Photo } from './types';
+import { currentUserId } from './own';
 
 export const PHOTO_BUCKET = 'photos';
 /** 署名付きURLの有効期限（秒）。表示のたびに発行し直す */
@@ -29,8 +30,8 @@ async function withSignedUrls(photos: Photo[]): Promise<PhotoWithUrl[]> {
 
 /** その日の写真を取得する（他人の共有分も RLS が許せば見える） */
 export async function fetchPhotos(date: string, ownerId?: string): Promise<PhotoWithUrl[]> {
-  let query = supabase.from('photos').select('*').eq('date', date).order('created_at');
-  if (ownerId) query = query.eq('user_id', ownerId);
+  // 共有で他人の行も見える RLS なので、自分の分は自分の id で絞る
+  const query = supabase.from('photos').select('*').eq('user_id', ownerId ?? await currentUserId()).eq('date', date).order('created_at');
   const { data, error } = await query;
   if (error) throw new Error(error.message);
   return withSignedUrls((data as Photo[]) ?? []);

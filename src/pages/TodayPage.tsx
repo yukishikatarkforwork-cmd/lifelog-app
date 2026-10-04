@@ -39,7 +39,18 @@ export default function TodayPage() {
   const navigate = useNavigate();
   const params = useParams();
   // URL を日付の単一の真実とし、ローカル state には持たない（戻る/進む・URL 共有が効く）
-  const date = params.date ?? todayStr();
+  // 「今日」は開きっぱなしで日付をまたぐことがあるので、画面に戻ってきたときに取り直す
+  const [today, setToday] = useState(todayStr);
+  useEffect(() => {
+    const refresh = () => setToday(todayStr());
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, []);
+  const date = params.date ?? today;
   const goToDate = (d: string) => navigate(`/day/${d}`);
 
   const [entries, setEntries] = useState<MealEntry[]>([]);
@@ -66,7 +77,7 @@ export default function TodayPage() {
     setLoading(true);
     setError('');
     const [entriesRes, foodRes, autoRes, settingsRes] = await Promise.all([
-      supabase.from('meal_entries').select('*').eq('date', date).order('created_at'),
+      supabase.from('meal_entries').select('*').eq('user_id', user.id).eq('date', date).order('created_at'),
       supabase.from('food_templates').select('*').order('name'),
       supabase.from('meal_templates').select('*').eq('auto_apply', true),
       supabase.from('user_settings').select('*').maybeSingle(),
@@ -118,8 +129,10 @@ export default function TodayPage() {
     toast('記録を削除しました');
   };
 
+  const [applying, setApplying] = useState(false);
   const applyAutoTemplates = async () => {
-    if (!user) return;
+    if (!user || applying) return;
+    setApplying(true);
     const rows = autoTemplates.flatMap((t) =>
       t.items.map((it) => ({
         user_id: user.id,
@@ -135,8 +148,9 @@ export default function TodayPage() {
         tags: [],
       })),
     );
-    if (rows.length === 0) return;
+    if (rows.length === 0) { setApplying(false); return; }
     const { error } = await supabase.from('meal_entries').insert(rows);
+    setApplying(false);
     if (error) { setError(error.message); return; }
     await reload();
     toast('自動セットを反映しました');
@@ -153,7 +167,7 @@ export default function TodayPage() {
     setFormOpen(true);
   };
 
-  const isToday = date === todayStr();
+  const isToday = date === today;
   const autoItemCount = autoTemplates.reduce((s, t) => s + t.items.length, 0);
 
   return (
@@ -190,7 +204,7 @@ export default function TodayPage() {
       {!loading && entries.length === 0 && autoItemCount > 0 && (
         <div className="info-box row-between">
           <span>自動セット対象のテンプレートが {autoItemCount} 件あります</span>
-          <button className="btn small" onClick={applyAutoTemplates}>自動セット</button>
+          <button className="btn small" onClick={applyAutoTemplates} disabled={applying}>{applying ? '反映中…' : '自動セット'}</button>
         </div>
       )}
 

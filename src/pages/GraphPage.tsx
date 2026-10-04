@@ -9,6 +9,7 @@ import { addDays, formatShort, todayStr } from '../lib/date';
 import { pfcKcal, sumNutrition } from '../lib/nutrition';
 import { correlationLabel, mean, pearson } from '../lib/analysis';
 import { fetchAllRows } from '../lib/fetchAll';
+import { useAuth } from '../context/AuthContext';
 
 const RANGES = [
   { days: 7, label: '7日' },
@@ -83,6 +84,7 @@ function TrendChart({ data, dataKey, name, unit, digits, color, height }: {
 }
 
 export default function GraphPage() {
+  const { user } = useAuth();
   const [days, setDays] = useState(7);
   const [meals, setMeals] = useState<MealEntry[]>([]);
   const [conditions, setConditions] = useState<DailyRecord[]>([]);
@@ -101,7 +103,7 @@ export default function GraphPage() {
       const today = todayStr();
       // 1年分の食事・支出は 1000 行を超えるので、全テーブルをページングで取る
       const page = (table: string) => (from: number, to: number) =>
-        supabase.from(table).select('*').gte('date', start).lte('date', today)
+        supabase.from(table).select('*').eq('user_id', user?.id ?? '').gte('date', start).lte('date', today)
           .order('date').order('created_at').range(from, to);
       try {
         const [m, c, w, e, b] = await Promise.all([
@@ -121,7 +123,7 @@ export default function GraphPage() {
       }
       setLoading(false);
     })();
-  }, [start]);
+  }, [start, user?.id]);
 
   // 3か月以上は棒グラフが潰れるので、食事は週ごと（記録のあった日の平均）にまとめる
   const bucketDays = days > 60 ? 7 : 1;

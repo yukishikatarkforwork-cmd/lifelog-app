@@ -41,7 +41,7 @@ export default function ConditionCard({ date }: { date: string }) {
   const [err, setErr] = useState('');
 
   useReload(async () => {
-    const { data } = await supabase.from('daily_records').select('*').eq('date', date).maybeSingle();
+    const { data } = await supabase.from('daily_records').select('*').eq('user_id', user?.id ?? '').eq('date', date).maybeSingle();
     const r = data as DailyRecord | null;
     setCondition(r?.condition_score ?? null);
     setMood(r?.mood_score ?? null);

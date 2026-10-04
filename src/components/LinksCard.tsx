@@ -41,7 +41,8 @@ export default function LinksCard({
   const reload = useReload(async () => {
     setLoading(true);
     let query = supabase.from('links').select('*').eq('date', date).order('created_at');
-    if (ownerId) query = query.eq('user_id', ownerId);
+    // 共有で他人の行も見える RLS なので、自分の分は自分の id で絞る
+    query = query.eq('user_id', ownerId ?? user?.id ?? '');
     const { data, error: e } = await query;
     if (e) setError(e.message);
     setLinks((data as LinkEntry[]) ?? []);

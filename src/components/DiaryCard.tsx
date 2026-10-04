@@ -19,7 +19,7 @@ export default function DiaryCard({ date }: { date: string }) {
   const [err, setErr] = useState('');
 
   const reload = useReload(async () => {
-    const { data } = await supabase.from('diary_entries').select('*').eq('date', date).maybeSingle();
+    const { data } = await supabase.from('diary_entries').select('*').eq('user_id', user?.id ?? '').eq('date', date).maybeSingle();
     const d = data as DiaryEntry | null;
     setTitle(d?.title ?? '');
     setBody(d?.body ?? '');

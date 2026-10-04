@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import type { DailyRecord, DiaryEntry, Expense, MealEntry } from '../lib/types';
 import { toDateStr, todayStr } from '../lib/date';
 import { useReload } from '../lib/useReload';
+import { useAuth } from '../context/AuthContext';
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 // 体調スコア 1..5 の色（悪い→良い）
@@ -14,6 +15,7 @@ const SCORE_BG: Record<number, string> = {
 const pad = (n: number) => String(n).padStart(2, '0');
 
 export default function CalendarView() {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -24,6 +26,7 @@ export default function CalendarView() {
   const [exp, setExp] = useState<Set<string>>(new Set());
   const [diary, setDiary] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const monthStart = toDateStr(new Date(year, month, 1));
   const monthEnd = toDateStr(new Date(year, month + 1, 0));
@@ -32,12 +35,16 @@ export default function CalendarView() {
 
   useReload(async () => {
     setLoading(true);
+    setError('');
+    const uid = user?.id ?? '';
     const [c, m, e, d] = await Promise.all([
-      supabase.from('daily_records').select('date,condition_score').gte('date', monthStart).lte('date', monthEnd),
-      supabase.from('meal_entries').select('date,calories').gte('date', monthStart).lte('date', monthEnd),
-      supabase.from('expenses').select('date').gte('date', monthStart).lte('date', monthEnd),
-      supabase.from('diary_entries').select('date').gte('date', monthStart).lte('date', monthEnd),
+      supabase.from('daily_records').select('date,condition_score').eq('user_id', uid).gte('date', monthStart).lte('date', monthEnd),
+      supabase.from('meal_entries').select('date,calories').eq('user_id', uid).gte('date', monthStart).lte('date', monthEnd),
+      supabase.from('expenses').select('date').eq('user_id', uid).gte('date', monthStart).lte('date', monthEnd),
+      supabase.from('diary_entries').select('date').eq('user_id', uid).gte('date', monthStart).lte('date', monthEnd),
     ]);
+    const err = c.error || m.error || e.error || d.error;
+    if (err) setError(err.message);
     const cMap = new Map<string, number | null>();
     for (const r of (c.data as DailyRecord[]) ?? []) cMap.set(r.date, r.condition_score);
     const kMap = new Map<string, number>();
@@ -50,7 +57,7 @@ export default function CalendarView() {
     for (const r of (d.data as Pick<DiaryEntry, 'date'>[]) ?? []) dSet.add(r.date);
     setCond(cMap); setKcal(kMap); setExp(eSet); setDiary(dSet);
     setLoading(false);
-  }, [monthStart, monthEnd]);
+  }, [monthStart, monthEnd, user?.id]);
 
   const prevMonth = () => {
     const d = new Date(year, month - 1, 1);
@@ -77,6 +84,7 @@ export default function CalendarView() {
         <div className="label">{year}年{month + 1}月</div>
         <button onClick={nextMonth} aria-label="次の月">›</button>
       </div>
+      {error && <div className="error-box">{error}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, textAlign: 'center' }}>
         {WEEKDAYS.map((w, i) => (

@@ -56,7 +56,7 @@ Deno.serve(async (req: Request) => {
     // --- 対象の日付を決める ---
     let dates: string[];
     if (body.dates && body.dates.length > 0) {
-      dates = [...new Set(body.dates)].filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
+      dates = [...new Set(body.dates)].filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(0, 2000);
       if (dates.length === 0) return json({ error: '日付の指定が不正です' }, 400);
     } else {
       const { data, error } = await supabase.rpc('lifelog_dates', { p_limit: 2000 });
@@ -69,7 +69,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // --- あるべき埋め込みの一覧を組み立てる ---
-    const dataset = await fetchRange(supabase, '', '', dates);
+    const dataset = await fetchRange(supabase, userId, '', '', dates);
     const idx = indexByDate(dataset);
 
     const targets: Target[] = [];
@@ -95,13 +95,23 @@ Deno.serve(async (req: Request) => {
     }
 
     // --- 既存の埋め込みと突き合わせる ---
-    const { data: existingRaw, error: exErr } = await supabase
-      .from('embeddings')
-      .select('id,kind,date,chunk_index,content_hash')
-      .in('date', dates);
-    if (exErr) return json({ error: `既存インデックスの取得に失敗しました: ${exErr.message}` }, 500);
-
-    const existing = (existingRaw as Array<{ id: string; kind: string; date: string; chunk_index: number; content_hash: string }>) ?? [];
+    // 日付を URL に並べるので、全件モード（最大 2000 日）は分割して引く。1000 行制限も range で越える
+    type ExistingRow = { id: string; kind: string; date: string; chunk_index: number; content_hash: string };
+    const existing: ExistingRow[] = [];
+    for (let i = 0; i < dates.length; i += 150) {
+      const chunk = dates.slice(i, i + 150);
+      for (let from = 0; ; from += 1000) {
+        const { data, error: exErr } = await supabase
+          .from('embeddings')
+          .select('id,kind,date,chunk_index,content_hash')
+          .in('date', chunk)
+          .range(from, from + 999);
+        if (exErr) return json({ error: `既存インデックスの取得に失敗しました: ${exErr.message}` }, 500);
+        const rows = (data as ExistingRow[]) ?? [];
+        existing.push(...rows);
+        if (rows.length < 1000) break;
+      }
+    }
     const key = (k: string, d: string, i: number) => `${k}|${d}|${i}`;
     const existingByKey = new Map(existing.map((e) => [key(e.kind, e.date, e.chunk_index), e]));
     const wantedKeys = new Set(targets.map((t) => key(t.kind, t.date, t.chunk_index)));

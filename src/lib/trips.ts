@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { addDays } from './date';
+import { currentUserId } from './own';
 import type { Trip, TripChecklistItem, TripItem, TripItemKind } from './types';
 
 /**
@@ -28,8 +29,9 @@ export function tripLengthLabel(trip: Pick<Trip, 'start_date' | 'end_date'>): st
 }
 
 export async function listTrips(): Promise<Trip[]> {
+  // 共有されたしおりも RLS 上は見えるが、一覧に混ぜると編集できないものが並ぶので自分の分だけ
   const { data, error } = await supabase
-    .from('trips').select('*').order('start_date', { ascending: false });
+    .from('trips').select('*').eq('user_id', await currentUserId()).order('start_date', { ascending: false });
   if (error) throw new Error(error.message);
   return (data as Trip[]) ?? [];
 }

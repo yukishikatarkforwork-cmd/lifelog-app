@@ -62,7 +62,9 @@ create index if not exists meal_templates_user_idx on public.meal_templates (use
 
 -- ---------- updated_at 自動更新トリガ ----------
 create or replace function public.set_updated_at()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql
+set search_path = public
+as $$
 begin
   new.updated_at = now();
   return new;
@@ -309,8 +311,9 @@ begin
     raise exception 'not authenticated';
   end if;
 
+  -- 日付の区切りは日本時間（current_date は UTC なので 9 時にリセットされてしまう）
   insert into public.ai_usage as u (user_id, date, count)
-  values (auth.uid(), current_date, 1)
+  values (auth.uid(), (now() at time zone 'Asia/Tokyo')::date, 1)
   on conflict (user_id, date) do update set count = u.count + 1
   returning u.count into v_count;
 
@@ -919,11 +922,22 @@ drop policy if exists "own trips" on public.trips;
 create policy "own trips" on public.trips
   for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 drop policy if exists "own trip_items" on public.trip_items;
+-- 自分の行であることに加え、親のしおりも自分のものであること（共有相手のしおりに書き込ませない）
 create policy "own trip_items" on public.trip_items
-  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all to authenticated
+  using (auth.uid() = user_id)
+  with check (
+    auth.uid() = user_id
+    and exists (select 1 from public.trips t where t.id = trip_id and t.user_id = auth.uid())
+  );
 drop policy if exists "own trip_checklist" on public.trip_checklist;
 create policy "own trip_checklist" on public.trip_checklist
-  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all to authenticated
+  using (auth.uid() = user_id)
+  with check (
+    auth.uid() = user_id
+    and exists (select 1 from public.trips t where t.id = trip_id and t.user_id = auth.uid())
+  );
 
 -- 共有: 旅行期間のどこか1日でも共有範囲に入っていれば、しおり全体を見せる。
 -- しおりは期間でひとまとまりなので、日単位で切ると意味をなさないため。
@@ -1096,8 +1110,13 @@ begin
     raise exception 'not authenticated';
   end if;
 
+  -- 用途は決め打ち。任意の文字列を許すと別名で上限を回避できる
+  if p_kind not in ('receipt') then
+    raise exception 'unknown quota kind: %', p_kind;
+  end if;
+
   insert into public.usage_counters as u (user_id, date, kind, count)
-  values (auth.uid(), current_date, p_kind, 1)
+  values (auth.uid(), (now() at time zone 'Asia/Tokyo')::date, p_kind, 1)
   on conflict (user_id, date, kind) do update set count = u.count + 1
   returning u.count into v_count;
 

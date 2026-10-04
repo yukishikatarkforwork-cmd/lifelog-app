@@ -4,6 +4,8 @@ import type { BodyRecord, DailyRecord, DiaryEntry, Expense, LinkEntry, MealEntry
 import { addDays, todayStr } from '../lib/date';
 import { toBodyCSV, toCSV, toExpensesCSV, toDailyMarkdown } from '../lib/export';
 import { useReload } from '../lib/useReload';
+import { useAuth } from '../context/AuthContext';
+import { fetchAllRows } from '../lib/fetchAll';
 
 // Excel が UTF-8 の日本語を正しく開けるよう先頭に付ける BOM マーカー
 const BOM = String.fromCharCode(0xfeff);
@@ -21,6 +23,7 @@ function download(filename: string, content: string, mime: string, bom = false) 
 }
 
 export default function ExportPage() {
+  const { user } = useAuth();
   const [start, setStart] = useState(addDays(todayStr(), -29));
   const [end, setEnd] = useState(todayStr());
   const [meals, setMeals] = useState<MealEntry[]>([]);
@@ -36,30 +39,31 @@ export default function ExportPage() {
   const [copied, setCopied] = useState(false);
 
   useReload(async () => {
+    if (!user) return;
     setLoading(true);
     setError('');
-    const [m, c, w, e, d, p, l, b] = await Promise.all([
-      supabase.from('meal_entries').select('*').gte('date', start).lte('date', end).order('date').order('created_at'),
-      supabase.from('daily_records').select('*').gte('date', start).lte('date', end),
-      supabase.from('weather_records').select('*').gte('date', start).lte('date', end),
-      supabase.from('expenses').select('*').gte('date', start).lte('date', end).order('date').order('created_at'),
-      supabase.from('diary_entries').select('*').gte('date', start).lte('date', end).order('date'),
-      supabase.from('photos').select('*').gte('date', start).lte('date', end).order('date'),
-      supabase.from('links').select('*').gte('date', start).lte('date', end).order('date'),
-      supabase.from('body_records').select('*').gte('date', start).lte('date', end).order('date'),
-    ]);
-    const err = m.error || c.error || w.error || e.error || d.error || p.error || l.error || b.error;
-    if (err) setError(err.message);
-    setMeals((m.data as MealEntry[]) ?? []);
-    setConditions((c.data as DailyRecord[]) ?? []);
-    setWeathers((w.data as WeatherRecord[]) ?? []);
-    setExpenses((e.data as Expense[]) ?? []);
-    setDiaries((d.data as DiaryEntry[]) ?? []);
-    setPhotos((p.data as Photo[]) ?? []);
-    setLinks((l.data as LinkEntry[]) ?? []);
-    setBodies((b.data as BodyRecord[]) ?? []);
+    // 1年分だと食事・支出が 1000 行を超えるのでページングする。共有相手の行は混ぜない
+    const page = (table: string) => (from: number, to: number) =>
+      supabase.from(table).select('*').eq('user_id', user.id).gte('date', start).lte('date', end)
+        .order('date').order('created_at').range(from, to);
+    try {
+      const [m, c, w, e, d, p, l, b] = await Promise.all([
+        fetchAllRows<MealEntry>(page('meal_entries')),
+        fetchAllRows<DailyRecord>(page('daily_records')),
+        fetchAllRows<WeatherRecord>(page('weather_records')),
+        fetchAllRows<Expense>(page('expenses')),
+        fetchAllRows<DiaryEntry>(page('diary_entries')),
+        fetchAllRows<Photo>(page('photos')),
+        fetchAllRows<LinkEntry>(page('links')),
+        fetchAllRows<BodyRecord>(page('body_records')),
+      ]);
+      setMeals(m); setConditions(c); setWeathers(w); setExpenses(e);
+      setDiaries(d); setPhotos(p); setLinks(l); setBodies(b);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '記録の取得に失敗しました');
+    }
     setLoading(false);
-  }, [start, end]);
+  }, [start, end, user?.id]);
 
   const title = `生活記録 ${start} 〜 ${end}`;
   const md = useMemo(

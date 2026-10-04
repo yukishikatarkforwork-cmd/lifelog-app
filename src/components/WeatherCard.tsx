@@ -23,7 +23,7 @@ export default function WeatherCard({ date }: { date: string }) {
 
   useReload(async () => {
     const [rec, settings] = await Promise.all([
-      supabase.from('weather_records').select('*').eq('date', date).maybeSingle(),
+      supabase.from('weather_records').select('*').eq('user_id', user?.id ?? '').eq('date', date).maybeSingle(),
       supabase.from('user_settings').select('home_latitude,home_longitude').maybeSingle(),
     ]);
     const st = settings.data as Pick<UserSettings, 'home_latitude' | 'home_longitude'> | null;

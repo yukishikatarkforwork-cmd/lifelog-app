@@ -228,7 +228,7 @@ export default function SettingsPage() {
 
       <div className="card">
         <h2>データ出力</h2>
-        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>食事記録を CSV / Markdown で書き出します（AI 分析・表計算向け）。</p>
+        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>体調・体重・食事・家計簿・日記などの記録を Markdown（AI 分析向け）や CSV で書き出します。</p>
         <Link to="/export" className="btn outline full" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>出力画面を開く</Link>
       </div>
 
@@ -291,12 +291,6 @@ export default function SettingsPage() {
           />
           <button className="btn" onClick={addCat} disabled={!newCat.trim()}>追加</button>
         </div>
-      </div>
-
-      <div className="card">
-        <h2>テンプレート管理</h2>
-        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>よく食べる食品・食事セットの登録と自動セット設定。</p>
-        <Link to="/templates" className="btn outline full" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>テンプレートを開く</Link>
       </div>
 
       <div className="card">

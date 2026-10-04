@@ -71,16 +71,38 @@ async function fetchAll<T>(
   return out;
 }
 
-/** 期間内の生データを全件取得する（件数が多いときもページングで欠けない） */
+/** `in('date', …)` は URL に乗るので、1回に並べる日付はこの数まで */
+const DATES_PER_QUERY = 150;
+
+/**
+ * 期間内の生データを全件取得する（件数が多いときもページングで欠けない）。
+ * userId で必ず絞る。カレンダー共有の RLS は共有相手の行も読めるようにしているため、
+ * 絞らないと他人の日記が本人の AI の文脈や検索インデックスに混ざる。
+ */
 export async function fetchRange(
   supabase: SupabaseClient,
+  userId: string,
   start: string,
   end: string,
   dates?: string[],
 ): Promise<Dataset> {
-  // 日付を明示された場合はその日だけ引く（RAG で拾った日の詳細を出すときに使う）
+  // 日付を明示された場合はその日だけ引く（RAG で拾った日の詳細を出すときに使う）。
+  // 日付が多いときは分割して引き、結果を結合する
+  if (dates && dates.length > DATES_PER_QUERY) {
+    const parts: Dataset[] = [];
+    for (let i = 0; i < dates.length; i += DATES_PER_QUERY) {
+      parts.push(await fetchRange(supabase, userId, start, end, dates.slice(i, i + DATES_PER_QUERY)));
+    }
+    return {
+      meals: parts.flatMap((p) => p.meals), conditions: parts.flatMap((p) => p.conditions),
+      weathers: parts.flatMap((p) => p.weathers), expenses: parts.flatMap((p) => p.expenses),
+      diaries: parts.flatMap((p) => p.diaries), photos: parts.flatMap((p) => p.photos),
+      links: parts.flatMap((p) => p.links), bodies: parts.flatMap((p) => p.bodies),
+    };
+  }
+
   const page = (table: string, cols: string) => (from: number, to: number) => {
-    const base = supabase.from(table).select(cols);
+    const base = supabase.from(table).select(cols).eq('user_id', userId);
     const filtered = dates ? base.in('date', dates) : base.gte('date', start).lte('date', end);
     return filtered.order('date').range(from, to);
   };

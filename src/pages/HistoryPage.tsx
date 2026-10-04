@@ -7,8 +7,11 @@ import { formatShort } from '../lib/date';
 import { fmt, sumNutrition } from '../lib/nutrition';
 import CalendarView from '../components/CalendarView';
 import { IconSearch } from '../components/icons';
+import { useAuth } from '../context/AuthContext';
+import { fetchAllRows } from '../lib/fetchAll';
 
 export default function HistoryPage() {
+  const { user } = useAuth();
   const [entries, setEntries] = useState<MealEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -20,18 +23,26 @@ export default function HistoryPage() {
 
   useEffect(() => {
     (async () => {
+      if (!user) return;
       setLoading(true);
-      const [mealRes, diaryRes] = await Promise.all([
-        supabase.from('meal_entries').select('*').order('date', { ascending: false }).order('created_at'),
-        supabase.from('diary_entries').select('*').order('date', { ascending: false }),
-      ]);
-      const err = mealRes.error || diaryRes.error;
-      if (err) { setError(err.message); setLoading(false); return; }
-      setEntries((mealRes.data as MealEntry[]) ?? []);
-      setDiaries((diaryRes.data as DiaryEntry[]) ?? []);
+      setError('');
+      // 全件を引く画面なので 1000 行で切れないようページングする。共有相手の行は混ぜない
+      const page = (table: string) => (from: number, to: number) =>
+        supabase.from(table).select('*').eq('user_id', user.id)
+          .order('date', { ascending: false }).order('created_at').range(from, to);
+      try {
+        const [meals, diaryRows] = await Promise.all([
+          fetchAllRows<MealEntry>(page('meal_entries')),
+          fetchAllRows<DiaryEntry>(page('diary_entries')),
+        ]);
+        setEntries(meals);
+        setDiaries(diaryRows);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : '記録の取得に失敗しました');
+      }
       setLoading(false);
     })();
-  }, []);
+  }, [user]);
 
   // 全タグを集計（出現順）
   const allTags = useMemo(() => {

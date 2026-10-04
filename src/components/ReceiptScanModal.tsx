@@ -29,14 +29,23 @@ export default function ReceiptScanModal({
   const [singleCategory, setSingleCategory] = useState(() => majorityCategory(scan.items) ?? categories[0] ?? '食費');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  // 背景タップで閉じる前に、直した内容を捨ててよいか聞く（スクロール中の誤タップ対策）
+  const [dirty, setDirty] = useState(false);
+  const [done, setDone] = useState(false);
+  const requestClose = () => {
+    if (busy || done) return;
+    if (!dirty || confirm('読み取り結果を破棄して閉じますか？')) onClose();
+  };
 
   const included = useMemo(() => rows.filter((r) => r.include), [rows]);
   const itemsSum = included.reduce((s, r) => s + (Number.isFinite(r.amount) ? r.amount : 0), 0);
   const totalNum = total.trim() === '' ? null : Number(total);
   const diff = itemsTotalDiff(included, Number.isFinite(totalNum as number) ? totalNum : null);
 
-  const update = (id: number, patch: Partial<Row>) =>
+  const update = (id: number, patch: Partial<Row>) => {
+    setDirty(true);
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  };
   const addRow = () =>
     setRows((rs) => [...rs, { id: Date.now(), name: '', amount: 0, category: categories[0] ?? '食費', include: true }]);
 
@@ -67,11 +76,12 @@ export default function ReceiptScanModal({
     const { error } = await supabase.from('expenses').insert(payload);
     setBusy(false);
     if (error) { setErr(error.message); return; }
+    setDone(true);
     onSaved(date, payload.length);
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" onClick={requestClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
         <h2>レシートの読み取り結果</h2>
         <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
@@ -85,7 +95,7 @@ export default function ReceiptScanModal({
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="field">
               <label>店名</label>
-              <input value={store} onChange={(e) => setStore(e.target.value)} placeholder="例: セブンイレブン" />
+              <input value={store} onChange={(e) => { setDirty(true); setStore(e.target.value); }} placeholder="例: セブンイレブン" />
             </div>
             <div className="grid-2">
               <div className="field">
@@ -161,9 +171,9 @@ export default function ReceiptScanModal({
         )}
 
         <div className="grid-2" style={{ marginTop: 12 }}>
-          <button className="btn outline" onClick={onClose} disabled={busy}>キャンセル</button>
-          <button data-testid="receipt-save" className="btn" onClick={() => void save()} disabled={busy}>
-            {busy ? '登録中…' : mode === 'items' ? `${included.length} 件を登録` : '登録'}
+          <button className="btn outline" onClick={requestClose} disabled={busy}>キャンセル</button>
+          <button data-testid="receipt-save" className="btn" onClick={() => void save()} disabled={busy || done}>
+            {busy ? '登録中…' : done ? '登録しました' : mode === 'items' ? `${included.length} 件を登録` : '登録'}
           </button>
         </div>
       </div>

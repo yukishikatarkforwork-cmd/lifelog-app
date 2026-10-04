@@ -104,7 +104,7 @@ export default function WeatherSettingsCard() {
 
       const [obs, existing] = await Promise.all([
         fetchWeatherRange(latNum, lonNum, start, end),
-        supabase.from('weather_records').select('date,pressure_hpa,weather').gte('date', start).lte('date', end),
+        supabase.from('weather_records').select('date,pressure_hpa,weather').eq('user_id', user.id).gte('date', start).lte('date', end),
       ]);
       if (existing.error) throw new Error(existing.error.message);
 

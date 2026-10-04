@@ -31,7 +31,7 @@ export default function BodyCard({ date }: { date: string }) {
 
   const reload = useReload(async () => {
     const [{ data }, status] = await Promise.all([
-      supabase.from('body_records').select('*').eq('date', date).maybeSingle(),
+      supabase.from('body_records').select('*').eq('user_id', user?.id ?? '').eq('date', date).maybeSingle(),
       fetchHealthPlanetStatus().catch(() => null),
     ]);
     const r = data as BodyRecord | null;

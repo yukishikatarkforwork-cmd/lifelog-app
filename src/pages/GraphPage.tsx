@@ -8,11 +8,15 @@ import type { BodyRecord, DailyRecord, Expense, MealEntry, WeatherRecord } from 
 import { addDays, formatShort, todayStr } from '../lib/date';
 import { pfcKcal, sumNutrition } from '../lib/nutrition';
 import { correlationLabel, mean, pearson } from '../lib/analysis';
+import { fetchAllRows } from '../lib/fetchAll';
 
 const RANGES = [
   { days: 7, label: '7日' },
   { days: 14, label: '14日' },
   { days: 30, label: '30日' },
+  { days: 90, label: '3か月' },
+  { days: 180, label: '半年' },
+  { days: 365, label: '1年' },
 ];
 const COLORS = { protein: '#e07070', fat: '#c4954a', carb: '#6baac0', kcal: '#e9a94d', condition: '#2f8f6b', pressure: '#6baac0', weight: '#2f8f6b', bodyFat: '#e9a94d' };
 const CAT_PALETTE = ['#2f8f6b', '#6baac0', '#e9a94d', '#e07070', '#7ab5a0', '#c4954a', '#8fa8b8', '#a3a3a3'];
@@ -34,40 +38,57 @@ export default function GraphPage() {
       setLoading(true);
       setError('');
       const today = todayStr();
-      const [m, c, w, e, b] = await Promise.all([
-        supabase.from('meal_entries').select('*').gte('date', start).lte('date', today),
-        supabase.from('daily_records').select('*').gte('date', start).lte('date', today),
-        supabase.from('weather_records').select('*').gte('date', start).lte('date', today),
-        supabase.from('expenses').select('*').gte('date', start).lte('date', today),
-        supabase.from('body_records').select('*').gte('date', start).lte('date', today).order('date'),
-      ]);
-      const err = m.error || c.error || w.error || e.error || b.error;
-      if (err) setError(err.message);
-      setMeals((m.data as MealEntry[]) ?? []);
-      setConditions((c.data as DailyRecord[]) ?? []);
-      setWeathers((w.data as WeatherRecord[]) ?? []);
-      setExpenses((e.data as Expense[]) ?? []);
-      setBodies((b.data as BodyRecord[]) ?? []);
+      // 1年分の食事・支出は 1000 行を超えるので、全テーブルをページングで取る
+      const page = (table: string) => (from: number, to: number) =>
+        supabase.from(table).select('*').gte('date', start).lte('date', today)
+          .order('date').order('created_at').range(from, to);
+      try {
+        const [m, c, w, e, b] = await Promise.all([
+          fetchAllRows<MealEntry>(page('meal_entries')),
+          fetchAllRows<DailyRecord>(page('daily_records')),
+          fetchAllRows<WeatherRecord>(page('weather_records')),
+          fetchAllRows<Expense>(page('expenses')),
+          fetchAllRows<BodyRecord>(page('body_records')),
+        ]);
+        setMeals(m);
+        setConditions(c);
+        setWeathers(w);
+        setExpenses(e);
+        setBodies(b);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '記録の取得に失敗しました');
+      }
       setLoading(false);
     })();
   }, [start]);
 
-  // 食事: 日別集計
+  // 3か月以上は棒グラフが潰れるので、食事は週ごと（記録のあった日の平均）にまとめる
+  const bucketDays = days > 60 ? 7 : 1;
+
+  // 食事: 日別（長期間は週別平均）集計
   const daily = useMemo(() => {
     const map = new Map<string, MealEntry[]>();
     for (const x of meals) { const a = map.get(x.date) ?? []; a.push(x); map.set(x.date, a); }
     const out = [];
-    for (let i = 0; i < days; i++) {
-      const d = addDays(start, i);
-      const t = sumNutrition(map.get(d) ?? []);
+    for (let i = 0; i < days; i += bucketDays) {
+      let recorded = 0;
+      const sum = { calories: 0, protein: 0, fat: 0, carbohydrate: 0 };
+      for (let j = i; j < Math.min(i + bucketDays, days); j++) {
+        const list = map.get(addDays(start, j)) ?? [];
+        if (list.length === 0) continue;
+        const t = sumNutrition(list);
+        sum.calories += t.calories; sum.protein += t.protein; sum.fat += t.fat; sum.carbohydrate += t.carbohydrate;
+        recorded++;
+      }
+      const n = Math.max(recorded, 1);
       out.push({
-        date: formatShort(d),
-        calories: Math.round(t.calories), protein: Math.round(t.protein),
-        fat: Math.round(t.fat), carbohydrate: Math.round(t.carbohydrate),
+        date: formatShort(addDays(start, i)),
+        calories: Math.round(sum.calories / n), protein: Math.round(sum.protein / n),
+        fat: Math.round(sum.fat / n), carbohydrate: Math.round(sum.carbohydrate / n),
       });
     }
     return out;
-  }, [meals, start, days]);
+  }, [meals, start, days, bucketDays]);
 
   // 体調×気圧: 日別
   const condPress = useMemo(() => {
@@ -347,7 +368,7 @@ export default function GraphPage() {
           ) : (
             <>
               <div className="card">
-                <h2>カロリー推移</h2>
+                <h2>カロリー推移{bucketDays > 1 && <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}> 週別平均</span>}</h2>
                 <ResponsiveContainer width="100%" height={200}>
                   <LineChart data={daily} margin={{ top: 5, right: 8, left: -16, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -360,7 +381,7 @@ export default function GraphPage() {
               </div>
 
               <div className="card">
-                <h2>PFC 推移 (g)</h2>
+                <h2>PFC 推移 (g){bucketDays > 1 && <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}> 週別平均</span>}</h2>
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={daily} margin={{ top: 5, right: 8, left: -16, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />

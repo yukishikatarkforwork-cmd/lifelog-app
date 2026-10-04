@@ -32,6 +32,56 @@ const BODY_METRICS: Array<{ key: keyof Pick<BodyRecord, 'muscle_kg' | 'visceral_
 ];
 const CAT_PALETTE = ['#2f8f6b', '#6baac0', '#e9a94d', '#e07070', '#7ab5a0', '#c4954a', '#8fa8b8', '#a3a3a3'];
 
+/** 記録のある点の数。少なければ点を打ち、多ければ線だけにする（365点に丸を打つと塗りつぶしになる） */
+const DOT_LIMIT = 45;
+const NICE_STEPS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500];
+
+/**
+ * 体重などの単一系列の推移。
+ * - 1軸だけ（体重と体脂肪率を1枚に重ねると、2本の軸で交差して読めなくなる）
+ * - 線は直線でつなぐ。曲線補間は無い日の値をでっち上げて見せてしまう
+ * - 縦軸は値の幅に少し余白を足した範囲にして、変化が見える倍率にする
+ */
+function TrendChart({ data, dataKey, name, unit, digits, color, height }: {
+  data: Array<Record<string, number | string | null>>;
+  dataKey: string; name: string; unit: string; digits: number; color: string; height: number;
+}) {
+  const values = data.map((d) => d[dataKey]).filter((v): v is number => typeof v === 'number');
+  const points = values.length;
+  const [lo, hi] = values.length > 0 ? [Math.min(...values), Math.max(...values)] : [0, 1];
+  // 目盛りは 0.1 / 0.2 / 0.5 / 1 / 2 / 5 … のきりのいい刻みにし、値の幅に少し余白を足した範囲を 4〜5 本で割る
+  const pad = Math.max((hi - lo) * 0.15, digits > 0 ? 0.2 : 1);
+  const step = NICE_STEPS.find((st) => (hi - lo + pad * 2) / st <= 5) ?? NICE_STEPS[NICE_STEPS.length - 1];
+  const min = Math.floor((lo - pad) / step) * step;
+  const max = Math.ceil((hi + pad) / step) * step;
+  const ticks: number[] = [];
+  for (let v = min; v <= max + step / 2; v += step) ticks.push(Math.round(v * 100) / 100);
+  const fmt = (v: unknown) => Number(v).toFixed(digits);
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <LineChart data={data} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="var(--border)" />
+        <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--muted)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} minTickGap={28} />
+        <YAxis
+          domain={[min, max]} ticks={ticks}
+          tick={{ fontSize: 10, fill: 'var(--muted)' }} tickLine={false} axisLine={false}
+          width={46} tickFormatter={fmt}
+        />
+        <Tooltip
+          formatter={(v) => [`${fmt(v)} ${unit}`, name]}
+          contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)' }}
+          cursor={{ stroke: 'var(--muted)', strokeDasharray: '3 3' }}
+        />
+        <Line
+          type="linear" dataKey={dataKey} name={name} stroke={color} strokeWidth={2} connectNulls isAnimationActive={false}
+          dot={points <= DOT_LIMIT ? { r: 3.5, fill: color, stroke: 'var(--card)', strokeWidth: 1.5 } : false}
+          activeDot={{ r: 5, stroke: 'var(--card)', strokeWidth: 2 }}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
 export default function GraphPage() {
   const [days, setDays] = useState(7);
   const [meals, setMeals] = useState<MealEntry[]>([]);
@@ -328,24 +378,21 @@ export default function GraphPage() {
             )}
           </div>
 
-          {/* 体重・体脂肪率 */}
+          {/* 体重・体脂肪率（軸が違うので同じ図に重ねず、縦に並べる） */}
           <div className="card">
             <h2>体重 {bodySummary && <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>{bodySummary.days} 日分</span>}</h2>
             {bodies.length === 0 ? (
               <div className="muted" style={{ fontSize: 13 }}>体重の記録がありません。「今日」画面で入力するか、設定で Health Planet と連携してください。</div>
             ) : (
-              <ResponsiveContainer width="100%" height={210}>
-                <LineChart data={bodyTrend} margin={{ top: 5, right: 4, left: -12, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-                  <YAxis yAxisId="left" domain={['auto', 'auto']} tick={{ fontSize: 10 }} width={40} />
-                  {hasBodyFat && <YAxis yAxisId="right" orientation="right" domain={['auto', 'auto']} tick={{ fontSize: 10 }} width={32} />}
-                  <Tooltip />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Line yAxisId="left" type="monotone" dataKey="weight" name="体重(kg)" stroke={COLORS.weight} strokeWidth={2} connectNulls dot={{ r: 2 }} />
-                  {hasBodyFat && <Line yAxisId="right" type="monotone" dataKey="bodyFat" name="体脂肪率(%)" stroke={COLORS.bodyFat} strokeWidth={2} connectNulls dot={{ r: 2 }} />}
-                </LineChart>
-              </ResponsiveContainer>
+              <>
+                <TrendChart data={bodyTrend} dataKey="weight" name="体重" unit="kg" digits={1} color={COLORS.weight} height={190} />
+                {hasBodyFat && (
+                  <>
+                    <div className="muted" style={{ fontSize: 12, marginTop: 10, marginBottom: 2 }}>体脂肪率 (%)</div>
+                    <TrendChart data={bodyTrend} dataKey="bodyFat" name="体脂肪率" unit="%" digits={1} color={COLORS.bodyFat} height={130} />
+                  </>
+                )}
+              </>
             )}
           </div>
 
@@ -358,15 +405,7 @@ export default function GraphPage() {
                   {' '}最新 {m.latest.toFixed(m.digits)}{m.unit}（{m.delta > 0 ? '+' : ''}{m.delta.toFixed(m.digits)}）・{m.days} 日分
                 </span>
               </h2>
-              <ResponsiveContainer width="100%" height={170}>
-                <LineChart data={bodyTrend} margin={{ top: 5, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-                  <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10 }} width={48} allowDecimals={m.digits > 0} tickFormatter={(v) => Number(v).toFixed(m.digits)} />
-                  <Tooltip formatter={(v) => `${Number(v).toFixed(m.digits)}${m.unit}`} />
-                  <Line type="monotone" dataKey={m.key} name={`${m.label}${m.unit ? `(${m.unit})` : ''}`} stroke={COLORS.weight} strokeWidth={2} connectNulls dot={{ r: 2 }} />
-                </LineChart>
-              </ResponsiveContainer>
+              <TrendChart data={bodyTrend} dataKey={m.key} name={m.label} unit={m.unit} digits={m.digits} color={COLORS.weight} height={170} />
             </div>
           ))}
 

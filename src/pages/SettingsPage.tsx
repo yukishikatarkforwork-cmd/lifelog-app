@@ -98,7 +98,7 @@ export default function SettingsPage() {
   const deleteAllData = async () => {
     if (!user) return;
     if (!confirm(
-      '体調・体重・食事・天気気圧・家計簿・日記・写真・リンク・旅のしおり・テンプレート・栄養目標・共有設定・Health Planet 連携を含む、'
+      '体調・体重・食事・天気気圧・家計簿・サブスク台帳・日記・写真・リンク・旅のしおり・テンプレート・栄養目標・共有設定・Health Planet 連携を含む、'
       + 'すべての記録を削除します。元に戻せません。よろしいですか？',
     )) return;
     setErr('');
@@ -114,6 +114,7 @@ export default function SettingsPage() {
       supabase.from('weather_records').delete().eq('user_id', user.id),
       supabase.from('expenses').delete().eq('user_id', user.id),
       supabase.from('expense_categories').delete().eq('user_id', user.id),
+      supabase.from('merchant_rules').delete().eq('user_id', user.id),
       supabase.from('diary_entries').delete().eq('user_id', user.id),
       supabase.from('links').delete().eq('user_id', user.id),
       supabase.from('trips').delete().eq('user_id', user.id),
@@ -121,6 +122,8 @@ export default function SettingsPage() {
       supabase.from('shares').delete().eq('owner_id', user.id),
       supabase.from('user_settings').delete().eq('user_id', user.id),
     ]);
+    // サブスク台帳は expenses から参照されるので、支出を消した後に消す
+    results.push(await supabase.from('subscriptions').delete().eq('user_id', user.id));
     let e = results.find((r) => r.error)?.error?.message;
     try {
       await deleteAllPhotos(user.id);

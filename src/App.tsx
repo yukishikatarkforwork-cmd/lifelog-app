@@ -14,6 +14,7 @@ const TemplatesPage = lazy(() => import('./pages/TemplatesPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const ExportPage = lazy(() => import('./pages/ExportPage'));
 const AskPage = lazy(() => import('./pages/AskPage'));
+const MoneyPage = lazy(() => import('./pages/MoneyPage'));
 const TripsPage = lazy(() => import('./pages/TripsPage'));
 const TripDetailPage = lazy(() => import('./pages/TripDetailPage'));
 const SharePage = lazy(() => import('./pages/SharePage'));
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="/graph" element={<GraphPage />} />
           <Route path="/templates" element={<TemplatesPage />} />
           <Route path="/ask" element={<AskPage />} />
+          <Route path="/money" element={<MoneyPage />} />
           <Route path="/trips" element={<TripsPage />} />
           <Route path="/trips/:tripId" element={<TripDetailPage />} />
           <Route path="/share" element={<SharePage />} />

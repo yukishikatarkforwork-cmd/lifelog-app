@@ -74,6 +74,8 @@ function expense(p: Partial<Expense>): Expense {
     id: p.id ?? 'e', user_id: 'u', date: p.date ?? '2026-06-08',
     amount: p.amount ?? 0, category: p.category ?? '食費',
     payment_method: p.payment_method ?? null, memo: p.memo ?? null,
+    merchant: p.merchant ?? null, source: p.source ?? 'manual', card_name: p.card_name ?? null,
+    import_key: p.import_key ?? null, subscription_id: p.subscription_id ?? null,
     created_at: '', updated_at: '',
   };
 }
@@ -82,8 +84,8 @@ describe('toExpensesCSV', () => {
   it('ヘッダーと行を出力する', () => {
     const csv = toExpensesCSV([expense({ amount: 1200, category: '食費', payment_method: '現金' })]);
     const [head, row] = csv.split('\r\n');
-    expect(head).toBe('date,amount,category,payment_method,memo');
-    expect(row).toBe('2026-06-08,1200,食費,現金,');
+    expect(head).toBe('date,amount,category,payment_method,memo,merchant,source,card_name');
+    expect(row).toBe('2026-06-08,1200,食費,現金,,,manual,');
   });
 });
 

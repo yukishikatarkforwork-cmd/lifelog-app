@@ -93,7 +93,10 @@ export default function ExpensesCard({ date }: { date: string }) {
         expenses.map((e) => (
           <div className="entry" key={e.id}>
             <button type="button" className="main entry-main" onClick={() => { setEditing(e); setFormOpen(true); }}>
-              <div className="name">{e.category} <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>{e.payment_method ?? ''}</span></div>
+              <div className="name">
+                {e.category} <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>{e.payment_method ?? ''}</span>
+                {e.source === 'card' && <span className="chip" style={{ marginLeft: 6, fontSize: 10, padding: '1px 6px' }}>{e.card_name ?? 'カード'}</span>}
+              </div>
               {e.memo && <div className="sub">{e.memo}</div>}
             </button>
             <div style={{ textAlign: 'right' }}>

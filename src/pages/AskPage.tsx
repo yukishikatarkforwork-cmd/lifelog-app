@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { supabase, supabaseUrl } from '../lib/supabase';
 import { addDays, todayStr } from '../lib/date';
 import { IconAsk } from '../components/icons';
@@ -27,6 +28,7 @@ const PRESET_QUESTIONS: Array<{ text: string; days: number | null }> = [
   { text: '気圧や天気と体調の関係はある？', days: 90 },
   { text: '食事のPFCバランスの問題点と、改善案を3つ教えて。', days: 30 },
   { text: '支出で削れそうなところはどこ？', days: 30 },
+  { text: 'サブスクで解約を検討すべきものはある？月いくら浮く？', days: 90 },
   { text: '睡眠時間は足りている？体調とどう関係している？', days: 90 },
 ];
 
@@ -40,8 +42,22 @@ export default function AskPage() {
   const [usage, setUsage] = useState('');
   const [mode, setMode] = useState('');
   const abortRef = useRef<AbortController | null>(null);
+  const location = useLocation();
 
   const stop = () => abortRef.current?.abort();
+
+  // 他の画面（お金の振り返りなど）から質問を持って遷移してきたら、その質問をすぐ投げる
+  const startedFromState = useRef(false);
+  useEffect(() => {
+    const st = location.state as { question?: string; days?: number | null } | null;
+    if (!st?.question || startedFromState.current) return;
+    startedFromState.current = true;
+    const d = st.days === undefined ? 30 : st.days;
+    setQuestion(st.question);
+    setDays(d);
+    void ask(st.question, d);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const ask = async (q: string, overrideDays?: number | null) => {
     const text = q.trim();

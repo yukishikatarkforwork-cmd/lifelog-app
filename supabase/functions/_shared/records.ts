@@ -29,6 +29,7 @@ export interface WeatherRow {
 }
 export interface ExpenseRow {
   date: string; amount: number; category: string; payment_method: string | null; memo: string | null;
+  merchant: string | null; card_name: string | null; source: string | null;
 }
 export interface DiaryRow {
   date: string; title: string | null; body: string; tags: string[] | null;
@@ -111,7 +112,7 @@ export async function fetchRange(
     fetchAll<MealRow>(page('meal_entries', 'date,meal_type,food_name,amount,calories,protein,fat,carbohydrate,memo')),
     fetchAll<ConditionRow>(page('daily_records', 'date,condition_score,mood_score,sleep_hours,headache,medication,memo')),
     fetchAll<WeatherRow>(page('weather_records', 'date,weather,pressure_hpa,temperature,humidity')),
-    fetchAll<ExpenseRow>(page('expenses', 'date,amount,category,payment_method,memo')),
+    fetchAll<ExpenseRow>(page('expenses', 'date,amount,category,payment_method,memo,merchant,card_name,source')),
     fetchAll<DiaryRow>(page('diary_entries', 'date,title,body,tags')),
     // 写真そのものは渡せないが、キャプションは出来事の手がかりになるので拾う
     fetchAll<PhotoRow>(page('photos', 'date,caption')),
@@ -131,7 +132,12 @@ export interface Stats {
     avg_sleep: number | null; headache_days: number; medication_days: number;
   };
   meals: { days: number; items: number; avg_kcal: number | null; avg_p: number | null; avg_f: number | null; avg_c: number | null };
-  expenses: { total: number; count: number; days: number; by_category: Array<{ category: string; total: number; count: number }> };
+  expenses: {
+    total: number; count: number; days: number; card_total?: number;
+    by_category: Array<{ category: string; total: number; count: number }>;
+    by_merchant?: Array<{ merchant: string; total: number; count: number }>;
+  };
+  subscriptions?: { count: number; monthly_total: number; items: Array<{ name: string; amount: number | null; cycle: string; status: string }> };
   diary_count: number;
   body: {
     days: number; avg_weight: number | null; first_weight: number | null;
@@ -166,6 +172,18 @@ export function formatStats(s: Stats): string {
   lines.push(`支出 合計 ${yen(s.expenses.total)} (${s.expenses.count} 件 / ${s.expenses.days} 日)`);
   if (s.expenses.by_category.length > 0) {
     lines.push(`カテゴリ別（多い順）: ${s.expenses.by_category.map((c) => `${c.category} ${yen(c.total)}`).join(' / ')}`);
+  }
+  if (s.expenses.card_total) lines.push(`うちカード明細からの取り込み ${yen(s.expenses.card_total)}`);
+  if (s.expenses.by_merchant && s.expenses.by_merchant.length > 0) {
+    lines.push(`店別トップ: ${s.expenses.by_merchant.map((m) => `${m.merchant} ${yen(m.total)} (${m.count}回)`).join(' / ')}`);
+  }
+  if (s.subscriptions && s.subscriptions.count > 0) {
+    const cyc: Record<string, string> = { monthly: '月額', yearly: '年額', other: '' };
+    const st: Record<string, string> = { active: '継続中', review: '解約候補' };
+    lines.push(
+      `サブスク台帳 ${s.subscriptions.count} 件 / 月額換算 合計 ${yen(s.subscriptions.monthly_total)}: ` +
+      s.subscriptions.items.map((i) => `${i.name} ${i.amount != null ? yen(i.amount) : '金額不明'}${cyc[i.cycle] ?? ''}${i.status === 'review' ? `(${st[i.status]})` : ''}`).join(' / '),
+    );
   }
   lines.push(`日記 ${s.diary_count} 件`);
   if (s.body && s.body.days > 0) {
@@ -312,7 +330,10 @@ export function formatFullDaily(idx: DayIndex, dates: string[], heading = '## �
       const sum = exps.reduce((s, e) => s + e.amount, 0);
       lines.push(`支出: 合計 ${yen(sum)}`);
       for (const e of exps) {
-        lines.push(`- ${e.category} ${yen(e.amount)}${e.memo ? ` ${e.memo.replace(/\n/g, ' ')}` : ''}`);
+        // 店名とメモが同じ（カード取り込み）なら二重に出さない
+        const memo = e.memo && e.memo !== e.merchant ? ` ${e.memo.replace(/\n/g, ' ')}` : '';
+        const tag = e.source === 'card' ? `［${e.card_name ?? 'カード'}］` : '';
+        lines.push(`- ${e.category} ${yen(e.amount)}${e.merchant ? ` ${e.merchant}` : ''}${memo}${tag}`);
       }
     }
 

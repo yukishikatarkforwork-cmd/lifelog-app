@@ -30,6 +30,12 @@ const IconAskNav = () => (
     <path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9L18 15z"/>
   </svg>
 );
+const IconMoney = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+    <line x1="6" y1="15" x2="10" y2="15"/>
+  </svg>
+);
 const IconSettings = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
     <line x1="4" y1="6" x2="20" y2="6"/>
@@ -45,6 +51,7 @@ const NAV = [
   { to: '/', label: '今日', Icon: IconToday, end: true, id: 'today' },
   { to: '/history', label: '履歴', Icon: IconHistory, end: false, id: 'history' },
   { to: '/graph', label: '分析', Icon: IconGraph, end: false, id: 'graph' },
+  { to: '/money', label: 'お金', Icon: IconMoney, end: false, id: 'money' },
   { to: '/ask', label: 'AI', Icon: IconAskNav, end: false, id: 'ask' },
   { to: '/trips', label: '旅', Icon: IconTripNav, end: false, id: 'trips' },
   { to: '/settings', label: '設定', Icon: IconSettings, end: false, id: 'settings' },

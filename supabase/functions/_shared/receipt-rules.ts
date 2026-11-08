@@ -53,11 +53,16 @@ export function defaultCategoryForStore(store: string | null, categories: string
   return pick('食費') ?? categories[0] ?? 'その他';
 }
 
-export function guessCategory(name: string, store: string | null, categories: string[]): string {
+/** 品名のキーワードだけでカテゴリを当てる。当たらなければ null（店の既定にはフォールバックしない） */
+export function matchCategoryKeyword(name: string, categories: string[]): string | null {
   for (const [cat, re] of CATEGORY_RULES) {
     if (re.test(name) && categories.includes(cat)) return cat;
   }
-  return defaultCategoryForStore(store, categories);
+  return null;
+}
+
+export function guessCategory(name: string, store: string | null, categories: string[]): string {
+  return matchCategoryKeyword(name, categories) ?? defaultCategoryForStore(store, categories);
 }
 
 /** レシート全文から支払方法を推定する */

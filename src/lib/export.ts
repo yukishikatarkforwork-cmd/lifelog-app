@@ -74,9 +74,9 @@ export function toMarkdown(entries: MealEntry[], title = '食事記録'): string
 }
 
 /** 家計簿の CSV */
-const EXPENSE_HEADER = ['date', 'amount', 'category', 'payment_method', 'memo'];
+const EXPENSE_HEADER = ['date', 'amount', 'category', 'payment_method', 'memo', 'merchant', 'source', 'card_name'];
 export function toExpensesCSV(expenses: Expense[]): string {
-  const rows = expenses.map((e) => [e.date, e.amount, e.category, e.payment_method ?? '', e.memo ?? '']);
+  const rows = expenses.map((e) => [e.date, e.amount, e.category, e.payment_method ?? '', e.memo ?? '', e.merchant ?? '', e.source ?? 'manual', e.card_name ?? '']);
   return [EXPENSE_HEADER, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n');
 }
 

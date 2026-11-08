@@ -309,6 +309,8 @@ export interface Share {
 }
 
 // ---------- Phase 5: 家計簿 ----------
+export type ExpenseSource = 'manual' | 'receipt' | 'card';
+
 export interface Expense {
   id: string;
   user_id: string;
@@ -317,8 +319,51 @@ export interface Expense {
   category: string;
   payment_method: string | null;
   memo: string | null;
+  /** 店名（カード明細の利用店名・レシートの店名）。手入力では null */
+  merchant: string | null;
+  source: ExpenseSource;
+  /** カード明細から取り込んだときのカード名 */
+  card_name: string | null;
+  /** カード明細の重複取り込みを防ぐキー */
+  import_key: string | null;
+  subscription_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// ---------- Phase 18: サブスク台帳・店名ルール ----------
+export type SubscriptionCycle = 'monthly' | 'yearly' | 'other';
+export type SubscriptionStatus = 'active' | 'review' | 'cancelled' | 'ignored';
+
+export interface Subscription {
+  id: string;
+  user_id: string;
+  name: string;
+  merchant_pattern: string;
+  amount: number | null;
+  cycle: SubscriptionCycle;
+  status: SubscriptionStatus;
+  category: string | null;
+  started_on: string | null;
+  cancelled_on: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const SUBSCRIPTION_CYCLE_LABELS: Record<SubscriptionCycle, string> = {
+  monthly: '月額', yearly: '年額', other: 'その他',
+};
+export const SUBSCRIPTION_STATUS_LABELS: Record<SubscriptionStatus, string> = {
+  active: '継続中', review: '解約候補', cancelled: '解約済み', ignored: '対象外',
+};
+
+export interface MerchantRule {
+  id: string;
+  user_id: string;
+  pattern: string;
+  category: string;
+  created_at: string;
 }
 
 export interface ExpenseCategory {
